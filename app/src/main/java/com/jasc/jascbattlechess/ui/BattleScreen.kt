@@ -33,26 +33,31 @@ fun BattleScreen(
         }
     }
 
-// CAMBIA LA CONDICIÓN AQUÍ:
-    if (boardState.esJaqueMate || boardState.esJaque) {
+// CONDICIÓN ACTUALIZADA: Ahora incluye esTablas
+    if (boardState.esJaqueMate || boardState.esJaque || boardState.esTablas) {
         AlertDialog(
-            onDismissRequest = { /* Opcional: permitir cerrar si solo es Jaque */ },
+            onDismissRequest = {
+                // Si solo es Jaque, permitimos cerrar al tocar fuera
+                if (boardState.esJaque) viewModel.limpiarAlertaJaque()
+            },
             title = {
-                Text(text = if (boardState.esJaqueMate) "¡Jaque Mate!" else "¡Jaque!")
+                Text(text = when {
+                    boardState.esJaqueMate -> "¡Jaque Mate!"
+                    boardState.esTablas -> "¡Tablas!"
+                    else -> "¡Jaque!"
+                })
             },
             text = { Text(text = boardState.mensajeEstado) },
             confirmButton = {
                 TextButton(onClick = {
-                    // Si es solo Jaque, la alerta desaparece.
-                    // Para no resetear al cerrar, puedes poner lógica aquí.
-                    if (!boardState.esJaqueMate) {
-                        // Acción para cerrar la alerta de Jaque sin resetear
-                        // Necesitas una forma de limpiar el estado 'esJaque' en el ViewModel
-                    } else {
+                    if (boardState.esJaqueMate || boardState.esTablas) {
                         viewModel.resetearJuego()
+                    } else {
+                        // Acción para cerrar la alerta de Jaque limpiando el estado
+                        viewModel.limpiarAlertaJaque()
                     }
                 }) {
-                    Text(if (boardState.esJaqueMate) "Reiniciar" else "Entendido")
+                    Text(if (boardState.esJaqueMate || boardState.esTablas) "Reiniciar" else "Entendido")
                 }
             }
         )

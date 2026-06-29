@@ -11,6 +11,22 @@ object MoveValidator {
         return !quedariaEnJaque(pieza, destino, piezas)
     }
 
+    fun esReyAhogado(equipo: Team, piezas: List<PieceState>): Boolean {
+        // 1. Si está en jaque, NO es ahogado (es jaque o jaque mate)
+        if (esJaque(equipo, piezas)) return false
+
+        // 2. Si tiene CUALQUIER movimiento válido, NO es ahogado
+        val piezasDelEquipo = piezas.filter { it.team == equipo }
+
+        // Iteramos sobre todas las piezas y todas las posiciones del tablero
+        return piezasDelEquipo.none { pieza ->
+            (0..7).any { x ->
+                (0..7).any { y ->
+                    esMovimientoValido(pieza, Position(x, y), piezas)
+                }
+            }
+        }
+    }
     private fun verificarGeometria(pieza: PieceState, destino: Position, piezas: List<PieceState>): Boolean {
         val dx = destino.x - pieza.position.x
         val dy = destino.y - pieza.position.y

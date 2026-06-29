@@ -42,8 +42,6 @@ class BoardViewModel : ViewModel() {
     // 1. Añade esto a tus variables del ViewModel
     private val _historial = mutableListOf<List<PieceState>>()
 
-
-
     fun intentarMovimiento(origen: Position, destino: Position) {
         Log.d("JascChess", "INICIO: Intentando mover de $origen a $destino")
 
@@ -129,35 +127,36 @@ class BoardViewModel : ViewModel() {
         _boardState.update { it.copy(esJaque = false) }
     }
     private fun actualizarEstadoJuego(piezas: List<PieceState>, siguienteTurno: Team) {
-        // 1. Calculamos el estado de forma segura
         val enJaque = MoveValidator.esJaque(siguienteTurno, piezas)
         val esMate = MoveValidator.esJaqueMate(siguienteTurno, piezas)
 
+        // AQUÍ ES DONDE LLAMAS A LA FUNCIÓN (esto hará que deje de estar en gris)
+        val esAhogado = MoveValidator.esReyAhogado(siguienteTurno, piezas)
+
         val mensaje = when {
             esMate -> "¡JAQUE MATE! Ganador: ${if (siguienteTurno == Team.BLANCAS) "NEGRO" else "BLANCAS"}"
+            esAhogado -> "¡TABLAS! El Rey está ahogado."
             enJaque -> "¡JAQUE AL REY ${siguienteTurno.name}!"
             siguienteTurno == Team.BLANCAS -> "Turno de BLANCAS (Tú)"
             else -> "Turno de NEGRO (IA pensando...)"
         }
 
-        // 2. FORZAMOS la actualización del estado con una lista inmutable limpia
-        // Usar .toList() asegura que no haya referencias mutables compartidas
         _boardState.update { currentState ->
             currentState.copy(
                 pieces = piezas.toList(),
                 turn = siguienteTurno,
                 esJaqueMate = esMate,
                 esJaque = enJaque,
+                esTablas = esAhogado, // <--- Actualizas el estado con el resultado de la función
                 mensajeEstado = mensaje
             )
         }
 
-        // 3. IA: Mantenemos el retardo para que el jugador vea la captura
-        if (siguienteTurno == Team.NEGRO && !esMate) {
+        // IA: Detenemos si es mate o tablas
+        if (siguienteTurno == Team.NEGRO && !esMate && !esAhogado) {
             ejecutarJugadaIA()
         }
     }
-
     private fun ejecutarJugadaIA() {
         viewModelScope.launch {
             delay(600) // Simulación de pensamiento de la IA
