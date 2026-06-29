@@ -84,19 +84,29 @@ class BoardViewModel : ViewModel() {
         }
 
         // Lógica de Captura
+// 1. Lógica de Captura Mejorada
         val piezaDefensora = nuevasPiezas.find { it.position == destino }
+
         if (piezaDefensora != null) {
             val dano = CombatRules.calcularDano(piezaAtacante, piezaDefensora)
-            piezaDefensora.health -= dano
-            Log.d("JascChess", "CAPTURA: ${piezaDefensora.type} recibió $dano de daño. Vida actual: ${piezaDefensora.health}")
+            val nuevaVida = piezaDefensora.health - dano
 
-            if (piezaDefensora.health <= 0) {
-                nuevasPiezas.remove(piezaDefensora)
+            Log.d("JascChess", "CAPTURA: ${piezaDefensora.type} recibió $dano de daño. Vida actual: $nuevaVida")
+
+            if (nuevaVida <= 0) {
+                // Creamos una nueva lista sin la pieza eliminada (inmutable)
+                nuevasPiezas = nuevasPiezas.filter { it.id != piezaDefensora.id }.toMutableList()
                 Log.d("JascChess", "CAPTURA: Pieza eliminada del tablero")
             } else {
+                // Actualizamos la pieza en la lista usando .map para preservar la inmutabilidad
+                nuevasPiezas = nuevasPiezas.map {
+                    if (it.id == piezaDefensora.id) it.copy(health = nuevaVida) else it
+                }.toMutableList()
+
                 Log.d("JascChess", "CAPTURA: Pieza sobrevive. Finalizando turno aquí.")
-                actualizarEstadoJuego(nuevasPiezas.map { if (it.id == piezaDefensora.id) piezaDefensora else it }, currentState.turn)
-                return
+                // Importante: Aquí pasamos la lista actualizada
+                actualizarEstadoJuego(nuevasPiezas, currentState.turn)
+                return // Terminamos aquí porque la pieza sobrevivió
             }
         }
 
