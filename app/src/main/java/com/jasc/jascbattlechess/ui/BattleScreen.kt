@@ -131,31 +131,20 @@ fun BattleScreen(
                         .border(if (isSelected) 4.dp else 0.dp, if (isSelected) Color.Yellow else Color.Transparent)
                         .clickable {
                             if (selectedPosition == null) {
-                                // Seleccionamos nuestra pieza
                                 if (pieza != null && pieza.team == boardState.turn) {
                                     selectedPosition = currentPos
                                 }
                             } else {
                                 val origen = selectedPosition
-
-                                // Ejecutamos el ataque
                                 viewModel.intentarMovimiento(origen!!, currentPos)
 
-                                // Verificamos si en el destino (currentPos) TODAVÍA hay un enemigo vivo
                                 val enemigoVivo = boardState.pieces.find { it.position == currentPos && it.team != boardState.turn && it.health > 0 }
-
-                                // CONDICIÓN CRÍTICA:
-                                // Si hay enemigo vivo, mantenemos la selección en EL ORIGEN (tu pieza)
-                                // Si no hay enemigo o el enemigo murió, apagamos todo.
-                                if (enemigoVivo != null) {
-                                    selectedPosition = origen
-                                } else {
-                                    selectedPosition = null
-                                }
+                                selectedPosition = if (enemigoVivo != null) origen else null
                             }
                         },
                     contentAlignment = Alignment.Center
                 ) {
+                    // 1. Emoji de la pieza
                     if (pieza != null) {
                         Text(
                             text = obtenerEmojiPieza(pieza.type, pieza.team),
@@ -163,6 +152,25 @@ fun BattleScreen(
                             fontWeight = FontWeight.Bold,
                             color = Color.Black
                         )
+
+                        // 2. Porcentaje de vida (Se muestra solo si la pieza está dañada)
+                        if (pieza.health < 100) {
+                            Text(
+                                text = "${pieza.health}%",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = when {
+                                    pieza.health > 50 -> Color.Green
+                                    pieza.health > 25 -> Color.Yellow
+                                    else -> Color.Red
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(2.dp)
+                                    .background(Color.Black.copy(alpha = 0.5f), shape = MaterialTheme.shapes.small)
+                                    .padding(horizontal = 2.dp)
+                            )
+                        }
                     }
                 }
             }
