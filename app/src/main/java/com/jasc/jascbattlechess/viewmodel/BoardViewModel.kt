@@ -46,18 +46,33 @@ class BoardViewModel : ViewModel() {
         Log.d("JascChess", "INICIO: Intentando mover de $origen a $destino")
 
         val currentState = _boardState.value
-        if (currentState.esJaqueMate || currentState.esTablas) return
+        if (currentState.esJaqueMate || currentState.esTablas) {
+            Log.w("JascChess", "ABORTADO: JaqueMate o Tablas detectado")
+            return
+        }
 
-        val piezaAtacante = currentState.pieces.find { it.position == origen } ?: return
-        if (piezaAtacante.team != currentState.turn) return
+        val piezaAtacante = currentState.pieces.find { it.position == origen }
+        if (piezaAtacante == null) {
+            Log.e("JascChess", "ERROR: No se encontró pieza atacante en $origen")
+            return
+        }
 
-        if (!MoveValidator.esMovimientoValido(piezaAtacante, destino, currentState.pieces)) return
+        if (piezaAtacante.team != currentState.turn) {
+            Log.w("JascChess", "ABORTADO: No es el turno del equipo ${piezaAtacante.team}")
+            return
+        }
+
+        if (!MoveValidator.esMovimientoValido(piezaAtacante, destino, currentState.pieces)) {
+            Log.w("JascChess", "ABORTADO: Movimiento inválido para ${piezaAtacante.type}")
+            return
+        }
 
         _historial.add(currentState.pieces)
         var nuevasPiezas = currentState.pieces.toMutableList()
 
         // Lógica de Enroque
         if (piezaAtacante.type == PieceType.REY && abs(destino.y - origen.y) == 2) {
+            Log.d("JascChess", "PROCESANDO: Enroque detectado")
             val esCorto = destino.y > origen.y
             val torreY = if (esCorto) 7 else 0
             val nuevaTorreY = if (esCorto) 5 else 3
@@ -68,39 +83,47 @@ class BoardViewModel : ViewModel() {
             }
         }
 
-        // --- Lógica de Captura Integrada ---
+        // Lógica de Captura
+// 1. Lógica de Captura Mejorada
         val piezaDefensora = nuevasPiezas.find { it.position == destino }
+
         if (piezaDefensora != null) {
             val dano = CombatRules.calcularDano(piezaAtacante, piezaDefensora)
             val nuevaVida = piezaDefensora.health - dano
 
-            // Mensaje para el estado
-            val mensajeCaptura = if (nuevaVida <= 0) "¡Captura completada!" else "¡Pieza debilitada al $nuevaVida%!"
-            _boardState.update { it.copy(mensajeEstado = mensajeCaptura) }
+            Log.d("JascChess", "CAPTURA: ${piezaDefensora.type} recibió $dano de daño. Vida actual: $nuevaVida")
 
             if (nuevaVida <= 0) {
-                nuevasPiezas.removeIf { it.id == piezaDefensora.id }
-                Log.d("JascChess", "¡REMATE! La pieza ${piezaDefensora.type} fue destruida.")
+                // Creamos una nueva lista sin la pieza eliminada (inmutable)
+                nuevasPiezas = nuevasPiezas.filter { it.id != piezaDefensora.id }.toMutableList()
+                Log.d("JascChess", "CAPTURA: Pieza eliminada del tablero")
             } else {
+                // Actualizamos la pieza en la lista usando .map para preservar la inmutabilidad
                 nuevasPiezas = nuevasPiezas.map {
                     if (it.id == piezaDefensora.id) it.copy(health = nuevaVida) else it
                 }.toMutableList()
 
-                Log.d("JascChess", "¡HERIDA! A ${piezaDefensora.type} le queda $nuevaVida% de vida.")
+                Log.d("JascChess", "CAPTURA: Pieza sobrevive. Finalizando turno aquí.")
+                // Importante: Aquí pasamos la lista actualizada
                 actualizarEstadoJuego(nuevasPiezas, currentState.turn)
                 return // Terminamos aquí porque la pieza sobrevivió
             }
         }
 
-        // Mover pieza si no hubo captura o si la captura eliminó la pieza
+        // Mover pieza
         nuevasPiezas = nuevasPiezas.map { if (it.id == piezaAtacante.id) it.copy(position = destino, isMoved = true) else it }.toMutableList()
+        Log.d("JascChess", "MOVIMIENTO: Pieza ${piezaAtacante.type} movida a $destino")
 
         // Coronación
         val piezasFinales = nuevasPiezas.map {
-            if (it.type == PieceType.PEON && (it.position.x == 0 || it.position.x == 7)) it.copy(type = PieceType.REINA) else it
+            if (it.type == PieceType.PEON && (it.position.x == 0 || it.position.x == 7)) {
+                Log.d("JascChess", "EVENTO: Coronación ejecutada")
+                it.copy(type = PieceType.REINA)
+            } else it
         }
 
         val siguienteTurno = if (currentState.turn == Team.BLANCAS) Team.NEGRO else Team.BLANCAS
+        Log.d("JascChess", "FIN: Llamando a actualizarEstadoJuego. Turno siguiente: $siguienteTurno")
         actualizarEstadoJuego(piezasFinales, siguienteTurno)
     }
 
