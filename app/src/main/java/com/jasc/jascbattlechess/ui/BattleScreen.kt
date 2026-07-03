@@ -1,5 +1,6 @@
 package com.jasc.jascbattlechess.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,10 +12,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.jasc.jascbattlechess.R
 import com.jasc.jascbattlechess.data.*
 import com.jasc.jascbattlechess.viewmodel.BoardViewModel
 
@@ -28,18 +31,14 @@ fun BattleScreen(
 
     if (boardState.esJaque && !boardState.esJaqueMate) {
         LaunchedEffect(Unit) {
-            kotlinx.coroutines.delay(3000) // Espera 3 segundos
-            viewModel.limpiarAlertaJaque() // La cierra sola
+            kotlinx.coroutines.delay(3000)
+            viewModel.limpiarAlertaJaque()
         }
     }
 
-// CONDICIÓN ACTUALIZADA: Ahora incluye esTablas
     if (boardState.esJaqueMate || boardState.esJaque || boardState.esTablas) {
         AlertDialog(
-            onDismissRequest = {
-                // Si solo es Jaque, permitimos cerrar al tocar fuera
-                if (boardState.esJaque) viewModel.limpiarAlertaJaque()
-            },
+            onDismissRequest = { if (boardState.esJaque) viewModel.limpiarAlertaJaque() },
             title = {
                 Text(text = when {
                     boardState.esJaqueMate -> "¡Jaque Mate!"
@@ -50,12 +49,8 @@ fun BattleScreen(
             text = { Text(text = boardState.mensajeEstado) },
             confirmButton = {
                 TextButton(onClick = {
-                    if (boardState.esJaqueMate || boardState.esTablas) {
-                        viewModel.resetearJuego()
-                    } else {
-                        // Acción para cerrar la alerta de Jaque limpiando el estado
-                        viewModel.limpiarAlertaJaque()
-                    }
+                    if (boardState.esJaqueMate || boardState.esTablas) viewModel.resetearJuego()
+                    else viewModel.limpiarAlertaJaque()
                 }) {
                     Text(if (boardState.esJaqueMate || boardState.esTablas) "Reiniciar" else "Entendido")
                 }
@@ -63,9 +58,8 @@ fun BattleScreen(
         )
     }
 
-    // 2. Estructura con Scaffold para los botones de control
     Scaffold(
-        // 1. Zona superior para el mensaje de estado (siempre visible)
+        modifier = modifier,
         topBar = {
             Surface(
                 modifier = Modifier.fillMaxWidth().padding(8.dp),
@@ -82,113 +76,104 @@ fun BattleScreen(
                 )
             }
         },
-        // 2. Botones de control abajo
         floatingActionButton = {
             Row {
                 FloatingActionButton(
                     onClick = { viewModel.retrocederJugada() },
                     containerColor = Color(0xFF312E2B),
                     contentColor = Color.White
-                ) {
-                    Text("⬅️", fontSize = 20.sp)
-                }
+                ) { Text("⬅️", fontSize = 20.sp) }
                 Spacer(modifier = Modifier.width(16.dp))
                 FloatingActionButton(
                     onClick = { viewModel.resetearJuego() },
                     containerColor = Color(0xFF312E2B),
                     contentColor = Color.White
-                ) {
-                    Text("🔄", fontSize = 20.sp)
-                }
+                ) { Text("🔄", fontSize = 20.sp) }
             }
         }
     ) { paddingValues ->
-        // 3. Contenido principal (Tablero)
         LazyVerticalGrid(
             columns = GridCells.Fixed(8),
-            modifier = Modifier
-                .fillMaxSize() // Ocupa todo el contenedor
-                .padding(paddingValues), // Elimina el padding fijo de 16.dp extra si quieres más espacio
-            contentPadding = PaddingValues(4.dp) // Un pequeño margen para que no toque los bordes
+            modifier = Modifier.fillMaxSize().padding(paddingValues),
+            contentPadding = PaddingValues(4.dp)
         ) {
             items(64) { index ->
                 val x = index / 8
                 val y = index % 8
                 val currentPos = Position(x, y)
+                val pieza = boardState.pieces.find { it.position.x == x && it.position.y == y }
                 val isSelected = selectedPosition == currentPos
 
-                // Buscamos la pieza basándonos en el estado más reciente del ViewModel
-                val pieza = boardState.pieces.find { it.position.x == x && it.position.y == y }
-
-// Define esto arriba de tu LazyVerticalGrid, dentro de BattleScreen
-                val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-
-// Dentro del LazyVerticalGrid...
                 Box(
                     modifier = Modifier
                         .aspectRatio(1f)
                         .background(if ((x + y) % 2 != 0) Color(0xFFB58863) else Color(0xFFF0D9B5))
-                        .border(if (isSelected) 4.dp else 0.dp, if (isSelected) Color.Yellow else Color.Transparent)
+                        .border(
+                            width = if (isSelected) 4.dp else 0.dp,
+                            color = if (isSelected) Color.Yellow else Color.Transparent
+                        )
                         .clickable {
+                            // LÓGICA DE CLIC:
                             if (selectedPosition == null) {
-                                // Seleccionamos nuestra pieza
-                                if (pieza != null && pieza.team == boardState.turn) {
+                                // Solo seleccionas si es TU turno y es TU pieza
+                                if (pieza != null && pieza.team == boardState.turn && pieza.health > 0) {
                                     selectedPosition = currentPos
                                 }
                             } else {
-                                val origen = selectedPosition
+                                // Si ya tenías una seleccionada, intentamos mover/atacar
+                                viewModel.intentarMovimiento(selectedPosition!!, currentPos)
 
-                                // Ejecutamos el ataque
-                                viewModel.intentarMovimiento(origen!!, currentPos)
-
-                                // Verificamos si en el destino (currentPos) TODAVÍA hay un enemigo vivo
-                                val enemigoVivo = boardState.pieces.find { it.position == currentPos && it.team != boardState.turn && it.health > 0 }
-
-                                // CONDICIÓN CRÍTICA:
-                                // Si hay enemigo vivo, mantenemos la selección en EL ORIGEN (tu pieza)
-                                // Si no hay enemigo o el enemigo murió, apagamos todo.
-                                if (enemigoVivo != null) {
-                                    selectedPosition = origen
-                                } else {
-                                    selectedPosition = null
-                                }
+                                // IMPORTANTE: Reseteamos la selección solo si el movimiento fue hacia una celda distinta
+                                // o si quieres que se mantenga para ataques múltiples, ajusta esta línea:
+                                selectedPosition = null
                             }
                         },
                     contentAlignment = Alignment.Center
                 ) {
                     if (pieza != null) {
-                        Text(
-                            text = obtenerEmojiPieza(pieza.type, pieza.team),
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Black
-                        )
+                        // Usamos un Box para que la sangre y el texto se sobrepongan sin mover la imagen
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            // 1. La imagen de la pieza
+                            Image(
+                                painter = painterResource(id = obtenerRecursoPieza(pieza)),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize().padding(2.dp)
+                            )
+
+                            // 2. Contenedor de indicadores (Vida/Sangre) en el centro o base
+                            Column(
+                                modifier = Modifier.align(Alignment.BottomCenter),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                if (pieza.health in 1..99) {
+                                    Text(
+                                        text = "${pieza.health}%",
+                                        fontSize = 10.sp,
+                                        color = Color.Red,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.background(Color.White.copy(alpha = 0.6f))
+                                    )
+                                }
+                                if (pieza.health <= 0) {
+                                    // Aumentamos el tamaño de la gota para que sea visible
+                                    Text(text = "🩸", fontSize = 16.sp)
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
 }
-
-@Composable
-fun obtenerEmojiPieza(tipo: PieceType, equipo: Team): String {
-    return when (equipo) {
-        Team.BLANCAS -> when (tipo) {
-            PieceType.REY -> "♔"
-            PieceType.REINA -> "♕"
-            PieceType.TORRE -> "♖"
-            PieceType.ALFIL -> "♗"
-            PieceType.CABALLO -> "♘"
-            PieceType.PEON -> "♙"
-        }
-        Team.NEGRO -> when (tipo) {
-            PieceType.REY -> "♚"
-            PieceType.REINA -> "♛"
-            PieceType.TORRE -> "♜"
-            PieceType.ALFIL -> "♝"
-            PieceType.CABALLO -> "♞"
-            PieceType.PEON -> "♟"
-        }
+fun obtenerRecursoPieza(pieza: PieceState): Int {
+    return when (pieza.type) {
+        PieceType.CABALLO -> if (pieza.team == Team.NEGRO) R.drawable.romano_caballo_negro else R.drawable.ic_caballo_blanco
+        PieceType.PEON -> if (pieza.team == Team.NEGRO) R.drawable.peon_guerrero_negro else R.drawable.peon_guerrero_blanco
+        PieceType.ALFIL -> if (pieza.team == Team.NEGRO) R.drawable.alfil_negro else R.drawable.alfil_blanco
+        PieceType.TORRE -> if (pieza.team == Team.NEGRO) R.drawable.torre_negra else R.drawable.torre_blanca
+        PieceType.REINA -> if (pieza.team == Team.NEGRO) R.drawable.reina_negra else R.drawable.reina_blanca
+        PieceType.REY -> if (pieza.team == Team.NEGRO) R.drawable.rey_negro else R.drawable.rey_blanco
+        else -> R.drawable.ic_launcher_foreground
     }
 }
-
