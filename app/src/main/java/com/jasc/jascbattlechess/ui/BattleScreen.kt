@@ -101,8 +101,8 @@ fun BattleScreen(
                 val x = index / 8
                 val y = index % 8
                 val currentPos = Position(x, y)
-                val pieza = boardState.pieces.find { it.position.x == x && it.position.y == y }
                 val isSelected = selectedPosition == currentPos
+                val pieza = boardState.pieces.find { it.position.x == x && it.position.y == y }
 
                 Box(
                     modifier = Modifier
@@ -113,38 +113,37 @@ fun BattleScreen(
                             color = if (isSelected) Color.Yellow else Color.Transparent
                         )
                         .clickable {
-                            // LÓGICA DE CLIC:
                             if (selectedPosition == null) {
-                                // Solo seleccionas si es TU turno y es TU pieza
                                 if (pieza != null && pieza.team == boardState.turn && pieza.health > 0) {
                                     selectedPosition = currentPos
                                 }
                             } else {
-                                // Si ya tenías una seleccionada, intentamos mover/atacar
+                                // Ejecutamos el movimiento
                                 viewModel.intentarMovimiento(selectedPosition!!, currentPos)
 
-                                // IMPORTANTE: Reseteamos la selección solo si el movimiento fue hacia una celda distinta
-                                // o si quieres que se mantenga para ataques múltiples, ajusta esta línea:
-                                selectedPosition = null
+                                // CORRECCIÓN: Solo reseteamos si la ficha se movió de verdad
+                                // Si el oponente sigue vivo, la posición de origen no cambió.
+                                val piezaEnOrigen = boardState.pieces.find { it.position == selectedPosition }
+                                if (piezaEnOrigen == null || piezaEnOrigen.position != selectedPosition) {
+                                    selectedPosition = null
+                                }
                             }
                         },
                     contentAlignment = Alignment.Center
                 ) {
                     if (pieza != null) {
-                        // Usamos un Box para que la sangre y el texto se sobrepongan sin mover la imagen
                         Box(modifier = Modifier.fillMaxSize()) {
-                            // 1. La imagen de la pieza
                             Image(
                                 painter = painterResource(id = obtenerRecursoPieza(pieza)),
                                 contentDescription = null,
                                 modifier = Modifier.fillMaxSize().padding(2.dp)
                             )
 
-                            // 2. Contenedor de indicadores (Vida/Sangre) en el centro o base
                             Column(
                                 modifier = Modifier.align(Alignment.BottomCenter),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
+                                // Mostramos vida incluso si es <= 0 para que la gota se pinte
                                 if (pieza.health in 1..99) {
                                     Text(
                                         text = "${pieza.health}%",
@@ -154,9 +153,8 @@ fun BattleScreen(
                                         modifier = Modifier.background(Color.White.copy(alpha = 0.6f))
                                     )
                                 }
-                                if (pieza.health <= 0) {
-                                    // Aumentamos el tamaño de la gota para que sea visible
-                                    Text(text = "🩸", fontSize = 16.sp)
+                                if (pieza.health <= 34) {
+                                    Text(text = "🩸", fontSize = 20.sp)
                                 }
                             }
                         }
@@ -166,6 +164,7 @@ fun BattleScreen(
         }
     }
 }
+
 fun obtenerRecursoPieza(pieza: PieceState): Int {
     return when (pieza.type) {
         PieceType.CABALLO -> if (pieza.team == Team.NEGRO) R.drawable.romano_caballo_negro else R.drawable.ic_caballo_blanco
