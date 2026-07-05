@@ -102,7 +102,22 @@ fun BattleScreen(
                     ) { if (pieza != null) PieceComponent(piece = pieza) }
                 }
             }
-
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                NivelIA.values().forEach { nivel ->
+                    Button(
+                        onClick = { viewModel.nivelIA = nivel },
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (viewModel.nivelIA == nivel) Color.Red else Color.DarkGray
+                        )
+                    ) {
+                        Text(nivel.name.take(3), fontSize = 12.sp)
+                    }
+                }
+            }
             // 4. CEMENTERIO JUGADOR
             Column(modifier = Modifier.fillMaxWidth().padding(4.dp)) {
                 Row(modifier = Modifier.fillMaxWidth().height(50.dp).background(Color(0xFF2C2C2C)).border(1.dp, Color.Gray).padding(4.dp),

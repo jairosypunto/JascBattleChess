@@ -15,10 +15,10 @@ object MoveValidator {
         // 1. Si está en jaque, NO es ahogado (es jaque o jaque mate)
         if (esJaque(equipo, piezas)) return false
 
-        // 2. Si tiene CUALQUIER movimiento válido, NO es ahogado
-        val piezasDelEquipo = piezas.filter { it.team == equipo }
+        // 2. Si tiene CUALQUIER movimiento válido (de piezas vivas), NO es ahogado
+        val piezasDelEquipo = piezas.filter { it.team == equipo && it.health > 0 }
 
-        // Iteramos sobre todas las piezas y todas las posiciones del tablero
+        // Iteramos sobre todas las piezas vivas y todas las posiciones del tablero
         return piezasDelEquipo.none { pieza ->
             (0..7).any { x ->
                 (0..7).any { y ->
