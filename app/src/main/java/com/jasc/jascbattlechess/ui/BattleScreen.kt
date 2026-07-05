@@ -38,6 +38,7 @@ fun BattleScreen(
     val capturadasNegras = boardState.pieces.filter { it.health <= 0 && it.team == Team.NEGRO }
     val capturadasBlancas = boardState.pieces.filter { it.health <= 0 && it.team == Team.BLANCAS }
 
+
     val puntosIA = capturadasBlancas.sumOf { p ->
         when (p.type) {
             PieceType.REY -> 100

@@ -1,11 +1,14 @@
 package com.jasc.jascbattlechess.viewmodel
 
+import android.app.Application
+import android.media.MediaPlayer
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.jasc.jascbattlechess.R
 import com.jasc.jascbattlechess.data.*
 import com.jasc.jascbattlechess.domain.ChessAI
 import com.jasc.jascbattlechess.domain.CombatRules
@@ -19,27 +22,45 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
-class BoardViewModel : ViewModel() {
+class BoardViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val context = application.applicationContext
 
     private val _boardState = MutableStateFlow(BoardState(pieces = crearPiezasIniciales()))
     val boardState = _boardState.asStateFlow()
 
     private val _historial = mutableListOf<List<PieceState>>()
 
-    // Configuración de Dificultad IA
     var nivelIA by mutableStateOf(NivelIA.NORMAL)
+
+    // --- 🎵 Funciones de sonido ---
+    private fun playSound(resId: Int) {
+        MediaPlayer.create(context, resId).apply {
+            setOnCompletionListener { release() }
+            start()
+        }
+    }
+
+    private fun playMove() = playSound(R.raw.move)
+    private fun playCapture() = playSound(R.raw.capture)
+    private fun playMate() = playSound(R.raw.mate)
+    private fun playVictoria() = playSound(R.raw.victoria)
+
+    // ------------------------------
 
     private fun crearPiezasIniciales(): List<PieceState> {
         val piezas = mutableListOf<PieceState>()
 
-        // Fila de peones: Plata abajo (6), Negro arriba (1)
         for (i in 0..7) {
             piezas.add(PieceState("pP$i", PieceType.PEON, Team.BLANCAS, Position(6, i)))
             piezas.add(PieceState("pN$i", PieceType.PEON, Team.NEGRO, Position(1, i)))
         }
 
-        // Reina en su color
-        val orden = listOf(PieceType.TORRE, PieceType.CABALLO, PieceType.ALFIL, PieceType.REINA, PieceType.REY, PieceType.ALFIL, PieceType.CABALLO, PieceType.TORRE)
+        val orden = listOf(
+            PieceType.TORRE, PieceType.CABALLO, PieceType.ALFIL,
+            PieceType.REINA, PieceType.REY, PieceType.ALFIL,
+            PieceType.CABALLO, PieceType.TORRE
+        )
         orden.forEachIndexed { i, tipo ->
             piezas.add(PieceState("Plata$i", tipo, Team.BLANCAS, Position(7, i)))
             piezas.add(PieceState("Negro$i", tipo, Team.NEGRO, Position(0, i)))
@@ -54,26 +75,17 @@ class BoardViewModel : ViewModel() {
     }
 
     fun intentarMovimiento(origen: Position, destino: Position) {
-        Log.d("JascChess", "INTENTO: Movimiento de $origen a $destino")
         val currentState = _boardState.value
-
         if (currentState.esJaqueMate || currentState.esTablas) return
 
-        val piezaAtacante = currentState.pieces.find { it.position == origen && it.health > 0 }
-        if (piezaAtacante == null) return
-
+        val piezaAtacante = currentState.pieces.find { it.position == origen && it.health > 0 } ?: return
         if (piezaAtacante.team != currentState.turn) return
+        if (!MoveValidator.esMovimientoValido(piezaAtacante, destino, currentState.pieces)) return
 
-        if (!MoveValidator.esMovimientoValido(piezaAtacante, destino, currentState.pieces)) {
-            Log.w("JascChess", "Movimiento inválido rechazado")
-            return
-        }
-
-        // Guardamos historial antes de modificar
         _historial.add(currentState.pieces.toList())
         var nuevasPiezas = currentState.pieces.toMutableList()
 
-        // Lógica de Enroque
+        // Enroque
         if (piezaAtacante.type == PieceType.REY && abs(destino.y - origen.y) == 2) {
             val esCorto = destino.y > origen.y
             val torreY = if (esCorto) 7 else 0
@@ -85,7 +97,7 @@ class BoardViewModel : ViewModel() {
             }
         }
 
-        // Lógica de Captura Mejorada
+        // Captura
         val piezaDefensora = nuevasPiezas.find { it.position == destino && it.health > 0 }
         if (piezaDefensora != null) {
             val dano = CombatRules.calcularDano(piezaAtacante, piezaDefensora)
@@ -100,18 +112,20 @@ class BoardViewModel : ViewModel() {
                 } else it
             }.toMutableList()
 
+            playCapture()
+
             if (nuevaVida > 0) {
                 actualizarEstadoJuego(nuevasPiezas, currentState.turn)
                 return
             }
+        } else {
+            playMove()
         }
 
-        // Mover atacante
         nuevasPiezas = nuevasPiezas.map {
             if (it.id == piezaAtacante.id) it.copy(position = destino, isMoved = true) else it
         }.toMutableList()
 
-        // Coronación
         val piezasFinales = nuevasPiezas.map {
             if (it.type == PieceType.PEON && (it.position.x == 0 || it.position.x == 7)) {
                 it.copy(type = PieceType.REINA)
@@ -124,7 +138,12 @@ class BoardViewModel : ViewModel() {
     fun retrocederJugada() {
         if (_historial.isNotEmpty()) {
             val estadoAnterior = _historial.removeAt(_historial.size - 1)
-            _boardState.update { it.copy(pieces = estadoAnterior, turn = if (it.turn == Team.BLANCAS) Team.NEGRO else Team.BLANCAS) }
+            _boardState.update {
+                it.copy(
+                    pieces = estadoAnterior,
+                    turn = if (it.turn == Team.BLANCAS) Team.NEGRO else Team.BLANCAS
+                )
+            }
         }
     }
 
@@ -150,6 +169,9 @@ class BoardViewModel : ViewModel() {
             )
         }
 
+        if (esMate) playMate()
+        else if (esAhogado) playVictoria()
+
         if (siguienteTurno == Team.NEGRO && !esMate && !esAhogado) {
             ejecutarJugadaIA()
         }
@@ -157,7 +179,7 @@ class BoardViewModel : ViewModel() {
 
     private fun ejecutarJugadaIA() {
         viewModelScope.launch {
-            val delayTime = when(nivelIA) {
+            val delayTime = when (nivelIA) {
                 NivelIA.PRINCIPIANTE -> 2000L
                 NivelIA.FACIL -> 1500L
                 NivelIA.NORMAL -> 600L
