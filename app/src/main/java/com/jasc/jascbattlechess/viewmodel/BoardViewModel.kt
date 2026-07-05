@@ -26,7 +26,7 @@ class BoardViewModel : ViewModel() {
 
     private val _historial = mutableListOf<List<PieceState>>()
 
-    // Configuración de Dificultad IA - Mantenemos la referencia correcta
+    // Configuración de Dificultad IA
     var nivelIA by mutableStateOf(NivelIA.NORMAL)
 
     private fun crearPiezasIniciales(): List<PieceState> {
@@ -59,7 +59,7 @@ class BoardViewModel : ViewModel() {
 
         if (currentState.esJaqueMate || currentState.esTablas) return
 
-        val piezaAtacante = currentState.pieces.find { it.position == origen }
+        val piezaAtacante = currentState.pieces.find { it.position == origen && it.health > 0 }
         if (piezaAtacante == null) return
 
         if (piezaAtacante.team != currentState.turn) return
@@ -69,7 +69,7 @@ class BoardViewModel : ViewModel() {
             return
         }
 
-        // Guardamos historial
+        // Guardamos historial antes de modificar
         _historial.add(currentState.pieces.toList())
         var nuevasPiezas = currentState.pieces.toMutableList()
 
@@ -157,7 +157,6 @@ class BoardViewModel : ViewModel() {
 
     private fun ejecutarJugadaIA() {
         viewModelScope.launch {
-            // Tiempo de "pensamiento" basado en dificultad
             val delayTime = when(nivelIA) {
                 NivelIA.PRINCIPIANTE -> 2000L
                 NivelIA.FACIL -> 1500L
@@ -166,7 +165,6 @@ class BoardViewModel : ViewModel() {
             }
             delay(delayTime)
 
-            // IA procesando en segundo plano
             val movimiento = withContext(Dispatchers.Default) {
                 ChessAI.calcularMovimientoIA(_boardState.value.pieces, nivelIA)
             }
