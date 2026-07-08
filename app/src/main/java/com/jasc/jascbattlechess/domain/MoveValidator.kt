@@ -123,14 +123,36 @@ object MoveValidator {
     }
 
     fun esJaqueMate(equipo: Team, piezas: List<PieceState>): Boolean {
+        // 1. Si no está en jaque, no puede ser mate
         if (!esJaque(equipo, piezas)) return false
-        return piezas.filter { it.team == equipo }.none { pieza ->
-            (0..7).any { x ->
-                (0..7).any { y ->
-                    esMovimientoValido(pieza, Position(x, y), piezas)
+
+        // 2. Revisar todos los movimientos posibles
+        val piezasDelEquipo = piezas.filter { it.team == equipo && it.health > 0 }
+        for (pieza in piezasDelEquipo) {
+            for (x in 0..7) {
+                for (y in 0..7) {
+                    val destino = Position(x, y)
+                    if (esMovimientoValido(pieza, destino, piezas)) {
+                        // Simular el movimiento
+                        val piezasSimuladas = piezas.map {
+                            when {
+                                it.id == pieza.id -> it.copy(position = destino)
+                                it.position == destino -> it.copy(health = 0, position = Position(-1, -1))
+                                else -> it
+                            }
+                        }
+                        // 3. Si después del movimiento el rey ya no está en jaque → no es mate
+                        if (!esJaque(equipo, piezasSimuladas)) {
+                            return false
+                        }
+                    }
                 }
             }
         }
+
+        // 4. Si ningún movimiento salva al rey → jaque mate
+        return true
     }
+
 
 }

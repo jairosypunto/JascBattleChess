@@ -28,6 +28,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset   // ✅ Import necesario para detectTransformGestures
+
 
 
 @Composable
@@ -127,7 +131,6 @@ fun BattleScreen(
                 }
             }
 
-// 🔹 Tablero ocupa el centro
 // 🔹 Calcula dimensiones de pantalla
             val screenWidth = LocalConfiguration.current.screenWidthDp
             val screenHeight = LocalConfiguration.current.screenHeightDp
@@ -135,23 +138,39 @@ fun BattleScreen(
 // 🔹 Tamaño de cada celda del tablero
             val cellSize = minOf(
                 (screenWidth - 60) / 8f,
-                (screenHeight - 180) / 8f // más resta → tablero más corto en vertical
+                (screenHeight - 180) / 8f
             ).dp
 
-// 🔹 Contenedor principal (marco verde)
+// 🔹 Estado del zoom y desplazamiento
+            var scaleBoard by remember { mutableFloatStateOf(1f) }   // ✅ zoom
+            var offsetX by remember { mutableFloatStateOf(0f) }      // ✅ desplazamiento horizontal
+            var offsetY by remember { mutableFloatStateOf(0f) }      // ✅ desplazamiento vertical
+
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .background(Color(0xFF2E7D32)) // marco verde alrededor del tablero
-                    .padding(bottom = 40.dp, start = 36.dp, end = 36.dp), // sube y achica laterales
+                    .background(Color(0xFF2E7D32))
+                    .padding(bottom = 40.dp, start = 36.dp, end = 36.dp)
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan: Offset, zoom: Float, _ ->
+                            // Zoom con pellizco
+                            scaleBoard = (scaleBoard * zoom).coerceIn(0.8f, 2.5f)
+                            // Arrastre con la yema del dedo
+                            offsetX += pan.x
+                            offsetY += pan.y
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
-                // 🔹 Tablero en cuadrícula 8x8
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(8),
                     modifier = Modifier.graphicsLayer {
                         rotationX = 18f   // inclinación estilo videojuego
                         scaleY = 0.9f     // aplana un poco en vertical
+                        scaleX = scaleBoard
+                        scaleY = scaleBoard
+                        translationX = offsetX   // ✅ mueve horizontal
+                        translationY = offsetY   // ✅ mueve vertical
                     },
                     verticalArrangement = Arrangement.Center
                 ) {
@@ -162,23 +181,20 @@ fun BattleScreen(
                         val isSelected = selectedPosition == currentPos
                         val pieza = boardState.pieces.find { it.position == currentPos }
 
-                        // 🔹 Animación de escala SOLO para la pieza
-                        val scale by animateFloatAsState(if (isSelected) 2.6f else 1.4f)
+                        val scalePiece by animateFloatAsState(if (isSelected) 2.6f else 1.4f)
 
-                        // 🔹 Casilla del tablero (NO se escala, se mantiene fija)
                         Box(
                             modifier = Modifier
                                 .size(cellSize)
                                 .background(
                                     when {
                                         pieza?.type == PieceType.REY && pieza.health <= 0 ->
-                                            Color.Red.copy(alpha = 0.5f) // casilla roja si el rey muere
-                                        (x + y) % 2 != 0 -> Color(0xFFB58863) // casilla marrón
-                                        else -> Color(0xFFF0D9B5)             // casilla beige
+                                            Color.Red.copy(alpha = 0.5f)
+                                        (x + y) % 2 != 0 -> Color(0xFFB58863)
+                                        else -> Color(0xFFF0D9B5)
                                     }
                                 )
                                 .clickable(enabled = boardState.turn == Team.BLANCAS) {
-                                    // 🔹 Lógica de selección y movimiento
                                     if (selectedPosition == null) {
                                         if (pieza != null && pieza.team == Team.BLANCAS) {
                                             selectedPosition = currentPos
@@ -199,7 +215,6 @@ fun BattleScreen(
                                 val isKingDefeated = pieza.type == PieceType.REY && pieza.health <= 0
                                 val shake = remember { Animatable(0f) }
 
-                                // 🔹 Animación de "temblor" si el rey muere
                                 LaunchedEffect(isKingDefeated) {
                                     if (isKingDefeated) {
                                         shake.animateTo(8f, animationSpec = tween(durationMillis = 100))
@@ -208,18 +223,45 @@ fun BattleScreen(
                                     }
                                 }
 
-                                // 🔹 Aquí SOLO la pieza se agranda
                                 PieceComponent(
                                     piece = pieza,
                                     modifier = Modifier
-                                        .scale(scale)                // ✅ solo la pieza se agranda
-                                        .offset(x = shake.value.dp)  // animación de derrota
+                                        .scale(scalePiece)
+                                        .offset(x = shake.value.dp)
                                 )
                             }
                         }
                     }
                 }
             }
+
+// 🔹 Controles de zoom manual (añadir debajo del Box del tablero)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Button(
+                    onClick = { scaleBoard = (scaleBoard + 0.2f).coerceAtMost(2.5f) },
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
+                ) {
+                    Text("+ Zoom", color = Color.White)
+                }
+
+                Button(
+                    onClick = { scaleBoard = (scaleBoard - 0.2f).coerceAtLeast(0.8f) },
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
+                ) {
+                    Text("- Zoom", color = Color.White)
+                }
+            }
+
+
+
+
 
 
 
