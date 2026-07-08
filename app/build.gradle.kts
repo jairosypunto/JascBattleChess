@@ -32,20 +32,33 @@ android {
 }
 
 dependencies {
-    // Platforma
+    // ✅ Compose BOM (maneja versiones de Compose automáticamente)
     implementation(platform("androidx.compose:compose-bom:2024.05.00"))
 
-    // Core y Lifecycle
+    // ✅ Core y Lifecycle
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.activity:activity-compose:1.9.1")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4") // <- ESTO SOLUCIONA 'viewModel'
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
 
-    // Compose UI
-    implementation("androidx.compose.ui:ui:1.6.8")
-    implementation("androidx.compose.ui:ui-graphics:1.6.8")
-    implementation("androidx.compose.ui:ui-tooling-preview:1.6.8")
-    implementation("androidx.compose.material3:material3:1.2.1")
+    // ✅ Compose UI
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.material3:material3")
 
-    debugImplementation("androidx.compose.ui:ui-tooling:1.6.8")
+    // ✅ Debug tools
+    debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // ✅ Tests locales (JUnit)
+    testImplementation("junit:junit:4.13.2")
+
+    // ✅ Tests instrumentados (AndroidX Test + Espresso)
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.05.00"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+
+    // ✅ Debug para tests
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

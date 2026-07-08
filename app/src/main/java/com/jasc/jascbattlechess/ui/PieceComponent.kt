@@ -86,6 +86,7 @@ fun AnimatedPiece(
     ) {
         PieceComponent(piece = pieza)
     }
+
 }
 
 fun obtenerRecursoImagen(piece: PieceState): Int {

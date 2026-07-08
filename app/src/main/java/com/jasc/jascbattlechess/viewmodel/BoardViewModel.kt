@@ -48,6 +48,14 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
 
     // ------------------------------
 
+    // --- 🏆 Puntaje acumulado ---
+    var puntosJugadorTotal by mutableStateOf(0)
+        private set
+
+    var puntosIATotal by mutableStateOf(0)
+        private set
+    // ------------------------------
+
     private fun crearPiezasIniciales(): List<PieceState> {
         val piezas = mutableListOf<PieceState>()
 
@@ -72,6 +80,7 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         Log.d("JascChess", "Reset completo del juego")
         _historial.clear()
         _boardState.value = BoardState(pieces = crearPiezasIniciales())
+        // 🔹 Los puntos acumulados NO se reinician aquí
     }
 
     fun intentarMovimiento(origen: Position, destino: Position) {
@@ -153,14 +162,23 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         val esAhogado = MoveValidator.esReyAhogado(siguienteTurno, piezas)
 
         _boardState.update { currentState ->
+            // ✅ Si hay mate, marcar al Rey enemigo con health = 0
+            val piezasFinales = if (esMate) {
+                piezas.map {
+                    if (it.type == PieceType.REY && it.team == siguienteTurno) {
+                        it.copy(health = 0)
+                    } else it
+                }
+            } else piezas.toList()
+
             currentState.copy(
-                pieces = piezas.toList(),
+                pieces = piezasFinales,
                 turn = siguienteTurno,
                 esJaqueMate = esMate,
                 esJaque = enJaque,
                 esTablas = esAhogado,
                 mensajeEstado = when {
-                    esMate -> "¡MATE! Gana: ${if (siguienteTurno == Team.BLANCAS) "NEGRO" else "BLANCAS"}"
+                    esMate -> "¡JAQUE MATE! Gana: ${if (siguienteTurno == Team.BLANCAS) "NEGRO" else "BLANCAS"}"
                     esAhogado -> "¡TABLAS!"
                     enJaque -> "¡JAQUE!"
                     siguienteTurno == Team.BLANCAS -> "Tu turno"
@@ -169,8 +187,17 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
-        if (esMate) playMate()
-        else if (esAhogado) playVictoria()
+        // --- 🏆 Puntaje por victoria ---
+        if (esMate) {
+            if (siguienteTurno == Team.NEGRO) {
+                puntosJugadorTotal += 100 // Blancas ganan
+            } else {
+                puntosIATotal += 100 // IA gana
+            }
+            playMate()
+        } else if (esAhogado) {
+            playVictoria()
+        }
 
         if (siguienteTurno == Team.NEGRO && !esMate && !esAhogado) {
             ejecutarJugadaIA()

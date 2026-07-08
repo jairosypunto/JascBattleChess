@@ -23,6 +23,12 @@ import com.jasc.jascbattlechess.data.*
 import com.jasc.jascbattlechess.viewmodel.BoardViewModel
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.draw.scale
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.graphicsLayer
+
 
 @Composable
 fun BattleScreen(
@@ -63,9 +69,45 @@ fun BattleScreen(
 
 
     Box(modifier = modifier.fillMaxSize().background(Color(0xFF1A1A1A))) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        var showHelp by remember { mutableStateOf(false) }
 
-            // Controles solo en portrait (arriba)
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (showHelp) {
+                AlertDialog(
+                    onDismissRequest = { showHelp = false },
+                    title = { Text("Cómo jugar JascBattleChess") },
+                    text = {
+                        Column {
+                            Text("1. Haz clic en la pieza que quieres mover; se pondrá más grande de lo normal y luego selecciona la casilla destino.")
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("2. Reglas de ataque:")
+                            Text("- Reina y Rey: capturan al enemigo con 1 golpe.")
+                            Text("- Torre: necesita 2 golpes.")
+                            Text("- Caballo: necesita 3 golpes.")
+                            Text("- Alfil: necesita 4 golpes.")
+                            Text("- Peón: necesita 5 golpes.")
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("3. El objetivo es derrotar al Rey enemigo.")
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Text(
+                                "Creado por Jairo Salazar Castaño\nIngeniero en Sistemas, \nApasionado por el código y la estrategia y en continuo aprendizaje \n 3016173378",
+                                fontSize = 12.sp,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showHelp = false }) {
+                            Text("Entendido")
+                        }
+                    }
+                )
+            }
+
+            // Controles solo en portrait
             if (!isLandscape) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
@@ -80,56 +122,110 @@ fun BattleScreen(
                     )
                     TextButton(onClick = { viewModel.resetearJuego() }) { Text("🔄 Reset", fontSize = 12.sp) }
                 }
+                Button(onClick = { showHelp = true }) {
+                    Text("Ayuda")
+                }
             }
 
-            // Tablero ocupa el centro
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(8),
+// 🔹 Tablero ocupa el centro
+// 🔹 Calcula dimensiones de pantalla
+            val screenWidth = LocalConfiguration.current.screenWidthDp
+            val screenHeight = LocalConfiguration.current.screenHeightDp
+
+// 🔹 Tamaño de cada celda del tablero
+            val cellSize = minOf(
+                (screenWidth - 60) / 8f,
+                (screenHeight - 180) / 8f // más resta → tablero más corto en vertical
+            ).dp
+
+// 🔹 Contenedor principal (marco verde)
+            Box(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(4.dp)
+                    .background(Color(0xFF2E7D32)) // marco verde alrededor del tablero
+                    .padding(bottom = 40.dp, start = 36.dp, end = 36.dp), // sube y achica laterales
+                contentAlignment = Alignment.Center
             ) {
-                items(64) { index ->
-                    val x = index / 8
-                    val y = index % 8
-                    val currentPos = Position(x, y)
-                    val isSelected = selectedPosition == currentPos
-                    val pieza = boardState.pieces.find { it.position.x == x && it.position.y == y && it.health > 0 }
+                // 🔹 Tablero en cuadrícula 8x8
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(8),
+                    modifier = Modifier.graphicsLayer {
+                        rotationX = 18f   // inclinación estilo videojuego
+                        scaleY = 0.9f     // aplana un poco en vertical
+                    },
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    items(64) { index ->
+                        val x = index / 8
+                        val y = index % 8
+                        val currentPos = Position(x, y)
+                        val isSelected = selectedPosition == currentPos
+                        val pieza = boardState.pieces.find { it.position == currentPos }
 
-                    // Animación de escala
-                    val scale by animateFloatAsState(if (isSelected) 1.2f else 1f)
+                        // 🔹 Animación de escala SOLO para la pieza
+                        val scale by animateFloatAsState(if (isSelected) 2.6f else 1.4f)
 
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .background(if ((x + y) % 2 != 0) Color(0xFFB58863) else Color(0xFFF0D9B5))
-                            .clickable(enabled = boardState.turn == Team.BLANCAS) {
-                                if (selectedPosition == null) {
-                                    if (pieza != null && pieza.team == Team.BLANCAS) {
-                                        selectedPosition = currentPos
+                        // 🔹 Casilla del tablero (NO se escala, se mantiene fija)
+                        Box(
+                            modifier = Modifier
+                                .size(cellSize)
+                                .background(
+                                    when {
+                                        pieza?.type == PieceType.REY && pieza.health <= 0 ->
+                                            Color.Red.copy(alpha = 0.5f) // casilla roja si el rey muere
+                                        (x + y) % 2 != 0 -> Color(0xFFB58863) // casilla marrón
+                                        else -> Color(0xFFF0D9B5)             // casilla beige
                                     }
-                                } else {
-                                    val origen = selectedPosition!!
-                                    viewModel.intentarMovimiento(origen, currentPos)
-                                    val nuevoEstado = viewModel.boardState.value
-                                    val enemigoEnDestino = nuevoEstado.pieces.find {
-                                        it.position == currentPos && it.team == Team.NEGRO && it.health > 0
+                                )
+                                .clickable(enabled = boardState.turn == Team.BLANCAS) {
+                                    // 🔹 Lógica de selección y movimiento
+                                    if (selectedPosition == null) {
+                                        if (pieza != null && pieza.team == Team.BLANCAS) {
+                                            selectedPosition = currentPos
+                                        }
+                                    } else {
+                                        val origen = selectedPosition!!
+                                        viewModel.intentarMovimiento(origen, currentPos)
+                                        val nuevoEstado = viewModel.boardState.value
+                                        val enemigoEnDestino = nuevoEstado.pieces.find {
+                                            it.position == currentPos && it.team == Team.NEGRO && it.health > 0
+                                        }
+                                        selectedPosition = if (enemigoEnDestino != null) origen else null
                                     }
-                                    selectedPosition = if (enemigoEnDestino != null) origen else null
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (pieza != null) {
+                                val isKingDefeated = pieza.type == PieceType.REY && pieza.health <= 0
+                                val shake = remember { Animatable(0f) }
+
+                                // 🔹 Animación de "temblor" si el rey muere
+                                LaunchedEffect(isKingDefeated) {
+                                    if (isKingDefeated) {
+                                        shake.animateTo(8f, animationSpec = tween(durationMillis = 100))
+                                        shake.animateTo(-8f, animationSpec = tween(durationMillis = 100))
+                                        shake.animateTo(0f, animationSpec = tween(durationMillis = 100))
+                                    }
                                 }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (pieza != null) {
-                            PieceComponent(
-                                piece = pieza,
-                                modifier = Modifier.scale(scale) // ✅ solo agrandamiento
-                            )
+
+                                // 🔹 Aquí SOLO la pieza se agranda
+                                PieceComponent(
+                                    piece = pieza,
+                                    modifier = Modifier
+                                        .scale(scale)                // ✅ solo la pieza se agranda
+                                        .offset(x = shake.value.dp)  // animación de derrota
+                                )
+                            }
                         }
                     }
                 }
             }
+
+
+
+
+
+
 
             // Cementerios y puntajes solo en portrait (parte inferior)
             if (!isLandscape) {
