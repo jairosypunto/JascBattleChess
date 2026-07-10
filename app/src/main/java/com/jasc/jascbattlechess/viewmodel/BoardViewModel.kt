@@ -33,7 +33,7 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
 
     var nivelIA by mutableStateOf(NivelIA.NORMAL)
 
-    // --- 🎵 Funciones de sonido ---
+    // --- 🎵 Funciones de sonido (Usando MediaPlayer nativo) ---
     private fun playSound(resId: Int) {
         MediaPlayer.create(context, resId).apply {
             setOnCompletionListener { release() }
@@ -45,16 +45,21 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
     private fun playCapture() = playSound(R.raw.capture)
     private fun playMate() = playSound(R.raw.mate)
     private fun playVictoria() = playSound(R.raw.victoria)
+    private fun playKnight() = playSound(R.raw.knight) // 🐴 Sonido exclusivo del caballo
 
-    // ------------------------------
-
-    // --- 🏆 Puntaje acumulado ---
+    // --- 🏆 Puntaje acumulado del Torneo ---
     var puntosJugadorTotal by mutableStateOf(0)
         private set
 
     var puntosIATotal by mutableStateOf(0)
         private set
-    // ------------------------------
+
+    // Guardan los puntos de piezas comidas acumulados en el torneo de forma persistente
+    var puntosCapturasJugador by mutableStateOf(0)
+        private set
+
+    var puntosCapturasIA by mutableStateOf(0)
+        private set
 
     private fun crearPiezasIniciales(): List<PieceState> {
         val piezas = mutableListOf<PieceState>()
@@ -76,11 +81,62 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         return piezas
     }
 
-    fun resetearJuego() {
-        Log.d("JascChess", "Reset completo del juego")
+    /**
+     * 🔄 Siguiente Partida
+     * Limpia el tablero conservando intactos los acumuladores de puntos.
+     */
+    fun siguientePartida() {
+        Log.d("JascChess", "Siguiente partida iniciada. Manteniendo puntajes anteriores.")
         _historial.clear()
-        _boardState.value = BoardState(pieces = crearPiezasIniciales())
-        // 🔹 Los puntos acumulados NO se reinician aquí
+        _boardState.value = BoardState(
+            pieces = crearPiezasIniciales(),
+            turn = Team.BLANCAS,
+            esJaqueMate = false,
+            esJaque = false,
+            esTablas = false,
+            mensajeEstado = "Tu turno"
+        )
+    }
+
+    /**
+     * 🎬 Retorna el ID del recurso de video que corresponde según los millares de puntos.
+     */
+    fun obtenerVideoRecompensa(puntos: Int): Int {
+        val millar = (puntos / 1000) * 1000
+        return when (millar) {
+            1000 -> R.raw.video_felicitacion_1000
+            2000 -> R.raw.video_felicitacion_2000
+            3000 -> R.raw.video_felicitacion_3000
+            4000 -> R.raw.video_felicitacion_4000
+            5000 -> R.raw.video_felicitacion_5000
+            6000 -> R.raw.video_felicitacion_6000
+            7000 -> R.raw.video_felicitacion_7000
+            8000 -> R.raw.video_felicitacion_8000
+            9000 -> R.raw.video_felicitacion_9000
+            10000 -> R.raw.video_felicitacion_10000
+            else -> R.raw.video_felicitacion_default
+        }
+    }
+
+    /**
+     * 🧹 Reset completo del juego
+     * Devuelve absolutamente todos los marcadores a cero (0).
+     */
+    fun resetearJuego() {
+        Log.d("JascChess", "Reset completo del juego y marcadores")
+        _historial.clear()
+        puntosJugadorTotal = 0
+        puntosIATotal = 0
+        puntosCapturasJugador = 0
+        puntosCapturasIA = 0
+        _boardState.value = BoardState(
+            pieces = crearPiezasIniciales(),
+            turn = Team.BLANCAS,
+            esJaqueMate = false,
+            esJaque = false,
+            esTablas = false,
+            mensajeEstado = "Tu turno"
+        )
     }
 
     fun intentarMovimiento(origen: Position, destino: Position) {
@@ -94,7 +150,7 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         _historial.add(currentState.pieces.toList())
         var nuevasPiezas = currentState.pieces.toMutableList()
 
-        // Enroque
+        // --- 1. Gestión del Enroque ---
         if (piezaAtacante.type == PieceType.REY && abs(destino.y - origen.y) == 2) {
             val esCorto = destino.y > origen.y
             val torreY = if (esCorto) 7 else 0
@@ -106,8 +162,10 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Captura
+        // --- 2. Gestión de Combate, Daño y Efectos de Sonido ---
         val piezaDefensora = nuevasPiezas.find { it.position == destino && it.health > 0 }
+        var seCambiaTurno = true
+
         if (piezaDefensora != null) {
             val dano = CombatRules.calcularDano(piezaAtacante, piezaDefensora)
             val nuevaVida = piezaDefensora.health - dano
@@ -121,27 +179,45 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
                 } else it
             }.toMutableList()
 
+            // Sonido de ataque/captura estándar
             playCapture()
 
+            // Si la pieza defensora sobrevivió al impacto, el atacante no cambia su turno (sigue presionando)
             if (nuevaVida > 0) {
-                actualizarEstadoJuego(nuevasPiezas, currentState.turn)
-                return
+                seCambiaTurno = false
             }
         } else {
-            playMove()
+            // Movimiento a casilla vacía: validamos si es el caballo para usar su relincho exclusivo
+            if (piezaAtacante.type == PieceType.CABALLO) {
+                playKnight()
+            } else {
+                playMove()
+            }
         }
 
-        nuevasPiezas = nuevasPiezas.map {
-            if (it.id == piezaAtacante.id) it.copy(position = destino, isMoved = true) else it
-        }.toMutableList()
+        // --- 3. Desplazamiento Físico del Atacante ---
+        val piezaDefensoraPostAtaque = nuevasPiezas.find { it.id == (piezaDefensora?.id ?: "") }
+        if (piezaDefensoraPostAtaque == null || piezaDefensoraPostAtaque.health <= 0) {
+            nuevasPiezas = nuevasPiezas.map {
+                if (it.id == piezaAtacante.id) it.copy(position = destino, isMoved = true) else it
+            }.toMutableList()
+        }
 
+        // --- 4. Coronación de Peones ---
         val piezasFinales = nuevasPiezas.map {
             if (it.type == PieceType.PEON && (it.position.x == 0 || it.position.x == 7)) {
                 it.copy(type = PieceType.REINA)
             } else it
         }
 
-        actualizarEstadoJuego(piezasFinales, if (currentState.turn == Team.BLANCAS) Team.NEGRO else Team.BLANCAS)
+        // --- 5. Cálculo y Transición del Siguiente Turno ---
+        val siguienteTurno = if (seCambiaTurno) {
+            if (currentState.turn == Team.BLANCAS) Team.NEGRO else Team.BLANCAS
+        } else {
+            currentState.turn
+        }
+
+        actualizarEstadoJuego(piezasFinales, siguienteTurno)
     }
 
     fun retrocederJugada() {
@@ -161,8 +237,28 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         val esMate = MoveValidator.esJaqueMate(siguienteTurno, piezas)
         val esAhogado = MoveValidator.esReyAhogado(siguienteTurno, piezas)
 
+        // Evaluar si alguna pieza del estado anterior pasó a salud 0 en este procesamiento
+        val estadoAnterior = _boardState.value.pieces
+        piezas.forEach { nuevaPieza ->
+            val piezaAntes = estadoAnterior.find { it.id == nuevaPieza.id }
+            if (piezaAntes != null && piezaAntes.health > 0 && nuevaPieza.health <= 0) {
+                val valorPieza = when (nuevaPieza.type) {
+                    PieceType.REY -> 100
+                    PieceType.REINA -> 100
+                    PieceType.TORRE -> 50
+                    PieceType.CABALLO -> 34
+                    PieceType.ALFIL -> 25
+                    PieceType.PEON -> 20
+                }
+                if (nuevaPieza.team == Team.NEGRO) {
+                    puntosCapturasJugador += valorPieza
+                } else {
+                    puntosCapturasIA += valorPieza
+                }
+            }
+        }
+
         _boardState.update { currentState ->
-            // ✅ Si hay mate, marcar al Rey enemigo con health = 0
             val piezasFinales = if (esMate) {
                 piezas.map {
                     if (it.type == PieceType.REY && it.team == siguienteTurno) {
@@ -187,12 +283,12 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
-        // --- 🏆 Puntaje por victoria ---
+        // --- Puntaje por victoria de la partida ---
         if (esMate) {
             if (siguienteTurno == Team.NEGRO) {
-                puntosJugadorTotal += 100 // Blancas ganan
+                puntosJugadorTotal += 100
             } else {
-                puntosIATotal += 100 // IA gana
+                puntosIATotal += 100
             }
             playMate()
         } else if (esAhogado) {

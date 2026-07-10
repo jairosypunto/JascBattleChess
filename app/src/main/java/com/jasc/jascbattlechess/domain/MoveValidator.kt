@@ -8,11 +8,33 @@ object MoveValidator {
     fun esMovimientoValido(pieza: PieceState, destino: Position, piezas: List<PieceState>): Boolean {
         if (piezas.any { it.position == destino && it.team == pieza.team }) return false
         if (!verificarGeometria(pieza, destino, piezas)) return false
+
+        val piezasSimuladas = piezas.map {
+            when {
+                it.id == pieza.id -> it.copy(position = destino)
+                it.position == destino -> it.copy(health = 0, position = Position(-1, -1)) // ✅ elimina la pieza capturada
+                else -> it
+            }
+        }
+
+        // Si es el rey, no puede moverse a una casilla bajo ataque
+        if (pieza.type == PieceType.REY && esJaque(pieza.team, piezasSimuladas)) return false
+
         return !quedariaEnJaque(pieza, destino, piezas)
     }
 
     fun esReyAhogado(equipo: Team, piezas: List<PieceState>): Boolean {
+        // Caso especial: solo quedan los dos reyes → tablas
+        val reyesVivos = piezas.filter { it.type == PieceType.REY && it.health > 0 }
+        val piezasVivas = piezas.filter { it.health > 0 }
+        if (piezasVivas.size == 2 && reyesVivos.size == 2) {
+            return true
+        }
+
+        // Si está en jaque, no puede ser ahogado
         if (esJaque(equipo, piezas)) return false
+
+        // Revisar si alguna pieza tiene movimiento válido
         val piezasDelEquipo = piezas.filter { it.team == equipo && it.health > 0 }
         return piezasDelEquipo.none { pieza ->
             (0..7).any { x ->
@@ -72,8 +94,13 @@ object MoveValidator {
     }
 
     private fun quedariaEnJaque(pieza: PieceState, destino: Position, piezas: List<PieceState>): Boolean {
-        val piezasSimuladas = piezas.filter { it.position != destino }
-            .map { if (it.id == pieza.id) it.copy(position = destino) else it }
+        val piezasSimuladas = piezas.map {
+            when {
+                it.id == pieza.id -> it.copy(position = destino)
+                it.position == destino -> it.copy(health = 0, position = Position(-1, -1)) // ✅ elimina la pieza capturada
+                else -> it
+            }
+        }
         val rey = piezasSimuladas.find { it.type == PieceType.REY && it.team == pieza.team } ?: return true
         return estaBajoAtaque(rey.position, pieza.team, piezasSimuladas)
     }
@@ -108,13 +135,19 @@ object MoveValidator {
         val stepY = if (dy == 0) 0 else dy / abs(dy)
         var x = origen.x + stepX
         var y = origen.y + stepY
+
+        // Recorre hasta la casilla anterior al destino
         while (x != destino.x || y != destino.y) {
+            // Si hay una pieza en el camino (antes del destino) → bloquea
             if (piezas.any { it.position.x == x && it.position.y == y && it.health > 0 }) return false
             x += stepX
             y += stepY
         }
+
+        // ✅ Permite que el destino esté ocupado por un enemigo (captura)
         return true
     }
+
 
     fun esJaque(equipo: Team, piezas: List<PieceState>): Boolean {
         val rey = piezas.find { it.type == PieceType.REY && it.team == equipo }
@@ -153,6 +186,4 @@ object MoveValidator {
         // 4. Si ningún movimiento salva al rey → jaque mate
         return true
     }
-
-
 }
