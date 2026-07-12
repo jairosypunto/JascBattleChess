@@ -56,6 +56,10 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     var miEquipoNet by mutableStateOf<Team?>(null)
+
+    var ultimoOrigen by mutableStateOf<Position?>(null)
+    var ultimoDestino by mutableStateOf<Position?>(null)
+
     private var connectionJob: Job? = null
 
     // --- 🎵 Funciones de sonido ---
@@ -331,6 +335,11 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
             val comandoRed = "${origen.x},${origen.y}->${destino.x},${destino.y}"
             enviarMovimientoRemoto(comandoRed)
         }
+        // 🟢 GUARDAR EL RASTRO VISUAL
+        ultimoOrigen = origen
+        ultimoDestino = destino
+
+        actualizarEstadoJuego(piezasFinales, siguienteTurno)
 
         actualizarEstadoJuego(piezasFinales, siguienteTurno)
     }
