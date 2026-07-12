@@ -10,28 +10,24 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import com.jasc.jascbattlechess.R
 import com.jasc.jascbattlechess.data.*
 
 @Composable
 fun PieceComponent(
     piece: PieceState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    miEquipo: Team? = Team.BLANCAS // Bando local por defecto
 ) {
     Box(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
         Image(
-            painter = painterResource(id = obtenerRecursoImagen(piece)),
-            contentDescription = "${piece.type.name}",
+            painter = painterResource(id = obtenerRecursoImagen(piece, miEquipo)),
+            contentDescription = piece.type.name,
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Fit
         )
@@ -57,45 +53,59 @@ fun PieceComponent(
     }
 }
 
-@Composable
-fun AnimatedPiece(
-    pieza: PieceState,
-    targetPos: Position, // posición final
-    cellSize: Dp = 48.dp
-) {
-    val animX = remember { Animatable(pieza.position.x * cellSize.value) }
-    val animY = remember { Animatable(pieza.position.y * cellSize.value) }
-
-    // Cuando cambia la posición, lanzamos la animación
-    LaunchedEffect(targetPos) {
-        animX.animateTo(
-            targetPos.x * cellSize.value,
-            animationSpec = tween(durationMillis = 500) // ✅ medio segundo
-        )
-        animY.animateTo(
-            targetPos.y * cellSize.value,
-            animationSpec = tween(durationMillis = 500)
-        )
+// 🟢 FUNCIÓN CORREGIDA: Se organizaron los recursos intercambiando el orden para que el atacante use '_opuesto'
+fun obtenerRecursoImagen(piece: PieceState, miEquipo: Team?): Int {
+    // 🔍 LUPA DE PERSPECTIVA:
+    // Si miEquipo es NEGRO (eres el que buscó rival), el atacante de arriba es BLANCAS.
+    // Si miEquipo es BLANCAS o null (Contra IA / Creador de Sala), el atacante de arriba es NEGRO.
+    val esAtacante = if (miEquipo == Team.NEGRO) {
+        piece.team == Team.BLANCAS
+    } else {
+        piece.team == Team.NEGRO
     }
 
-    Box(
-        modifier = Modifier
-            .offset(x = animX.value.dp, y = animY.value.dp)
-            .size(cellSize),
-        contentAlignment = Alignment.Center
-    ) {
-        PieceComponent(piece = pieza)
-    }
-
-}
-
-fun obtenerRecursoImagen(piece: PieceState): Int {
     return when (piece.type) {
-        PieceType.CABALLO -> if (piece.team == Team.NEGRO) R.drawable.romano_caballo_negro else R.drawable.ic_caballo_blanco
-        PieceType.PEON -> if (piece.team == Team.NEGRO) R.drawable.peon_guerrero_negro else R.drawable.peon_guerrero_blanco
-        PieceType.ALFIL -> if (piece.team == Team.NEGRO) R.drawable.alfil_negro else R.drawable.alfil_blanco
-        PieceType.TORRE -> if (piece.team == Team.NEGRO) R.drawable.torre_negra else R.drawable.torre_blanca
-        PieceType.REINA -> if (piece.team == Team.NEGRO) R.drawable.reina_negra else R.drawable.reina_blanca
-        PieceType.REY -> if (piece.team == Team.NEGRO) R.drawable.rey_negro else R.drawable.rey_blanco
+        PieceType.CABALLO -> {
+            if (piece.team == Team.NEGRO) {
+                if (esAtacante) R.drawable.romano_caballo_negro else R.drawable.romano_caballo_negro_opuesto
+            } else {
+                if (esAtacante) R.drawable.ic_caballo_blanco_opuesto else R.drawable.ic_caballo_blanco
+            }
+        }
+        PieceType.PEON -> {
+            if (piece.team == Team.NEGRO) {
+                if (esAtacante) R.drawable.peon_guerrero_negro else R.drawable.peon_guerrero_negro_opuesto
+            } else {
+                if (esAtacante) R.drawable.peon_guerrero_blanco_opuesto else R.drawable.peon_guerrero_blanco
+            }
+        }
+        PieceType.ALFIL -> {
+            if (piece.team == Team.NEGRO) {
+                if (esAtacante) R.drawable.alfil_negro else R.drawable.alfil_negro_opuesto
+            } else {
+                if (esAtacante) R.drawable.alfil_blanco_opuesto else R.drawable.alfil_blanco
+            }
+        }
+        PieceType.TORRE -> {
+            if (piece.team == Team.NEGRO) {
+                if (esAtacante) R.drawable.torre_negra else R.drawable.torre_negra_opuesto
+            } else {
+                if (esAtacante) R.drawable.torre_blanca_opuesto else R.drawable.torre_blanca
+            }
+        }
+        PieceType.REINA -> {
+            if (piece.team == Team.NEGRO) {
+                if (esAtacante) R.drawable.reina_negra else R.drawable.reina_negra_opuesto
+            } else {
+                if (esAtacante) R.drawable.reina_blanca_opuesto else R.drawable.reina_blanca
+            }
+        }
+        PieceType.REY -> {
+            if (piece.team == Team.NEGRO) {
+                if (esAtacante) R.drawable.rey_negro else R.drawable.rey_negro_opuesto
+            } else {
+                if (esAtacante) R.drawable.rey_blanco_opuesto else R.drawable.rey_blanco
+            }
+        }
     }
 }

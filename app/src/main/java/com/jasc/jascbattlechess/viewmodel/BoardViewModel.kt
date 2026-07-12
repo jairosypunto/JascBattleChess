@@ -1,6 +1,11 @@
 package com.jasc.jascbattlechess.viewmodel
 
+import android.annotation.SuppressLint
 import android.app.Application
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
+import android.content.Context
 import android.media.MediaPlayer
 import android.util.Log
 import androidx.compose.runtime.getValue
@@ -10,10 +15,13 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.jasc.jascbattlechess.R
 import com.jasc.jascbattlechess.data.*
+import com.jasc.jascbattlechess.ui.ModoJuego
 import com.jasc.jascbattlechess.domain.ChessAI
 import com.jasc.jascbattlechess.domain.CombatRules
 import com.jasc.jascbattlechess.domain.MoveValidator
+import com.jasc.jascbattlechess.domain.JascBluetoothManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,6 +29,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
+
+enum class BluetoothState {
+    DESCONECTADO, ESCUCHANDO, CONECTANDO, CONECTADO
+}
 
 class BoardViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -32,12 +44,29 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
     private val _historial = mutableListOf<List<PieceState>>()
 
     var nivelIA by mutableStateOf(NivelIA.NORMAL)
+    var modoJuegoActivo by mutableStateOf(ModoJuego.CONTRA_IA)
 
-    // --- 🎵 Funciones de sonido (Usando MediaPlayer nativo) ---
+    // --- 📡 Configuración de Bluetooth Delegada ---
+    private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+    private val adapter: BluetoothAdapter? = bluetoothManager.adapter
+
+    private val jascBluetoothManager = JascBluetoothManager(adapter)
+
+    var estadoBluetooth by mutableStateOf(BluetoothState.DESCONECTADO)
+        private set
+
+    var miEquipoNet by mutableStateOf<Team?>(null)
+    private var connectionJob: Job? = null
+
+    // --- 🎵 Funciones de sonido ---
     private fun playSound(resId: Int) {
-        MediaPlayer.create(context, resId).apply {
-            setOnCompletionListener { release() }
-            start()
+        try {
+            MediaPlayer.create(context, resId).apply {
+                setOnCompletionListener { release() }
+                start()
+            }
+        } catch (e: Exception) {
+            Log.e("Audio", "Error al reproducir sonido", e)
         }
     }
 
@@ -45,30 +74,127 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
     private fun playCapture() = playSound(R.raw.capture)
     private fun playMate() = playSound(R.raw.mate)
     private fun playVictoria() = playSound(R.raw.victoria)
-    private fun playKnight() = playSound(R.raw.knight) // 🐴 Sonido exclusivo del caballo
+    private fun playKnight() = playSound(R.raw.knight)
 
-    // --- 🏆 Puntaje acumulado del Torneo ---
+    // --- 🏆 Marcadores ---
     var puntosJugadorTotal by mutableStateOf(0)
         private set
-
     var puntosIATotal by mutableStateOf(0)
         private set
-
-    // Guardan los puntos de piezas comidas acumulados en el torneo de forma persistente
     var puntosCapturasJugador by mutableStateOf(0)
         private set
-
     var puntosCapturasIA by mutableStateOf(0)
         private set
 
+    // --- 🌐 Gestión de Red Bluetooth ---
+
+    @SuppressLint("MissingPermission")
+    fun iniciarServidor(onMessageReceived: (String) -> Unit) {
+        if (adapter == null) return
+        connectionJob?.cancel()
+
+        // 1. Forzamos de inmediato el bando local y el mensaje de estado del torneo
+        miEquipoNet = Team.BLANCAS
+        _boardState.update { it.copy(mensajeEstado = "Tu turno (Blancas)") }
+
+        connectionJob = viewModelScope.launch(Dispatchers.Main) {
+            estadoBluetooth = BluetoothState.ESCUCHANDO
+            val socket = jascBluetoothManager.startServer(onMessageReceived)
+            if (socket != null) {
+                estadoBluetooth = BluetoothState.CONECTADO
+                jascBluetoothManager.listenForMessages(socket) { mensaje ->
+                    procesarMovimientoRemoto(mensaje)
+                    onMessageReceived(mensaje)
+                }
+                desconectarBluetooth()
+            } else {
+                estadoBluetooth = BluetoothState.DESCONECTADO
+            }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun conectarAConversor(device: BluetoothDevice, onMessageReceived: (String) -> Unit) {
+        if (adapter == null) return
+        connectionJob?.cancel()
+
+        // 2. Forzamos de inmediato el bando de las negras para activar el modo espejo en la UI
+        miEquipoNet = Team.NEGRO
+        _boardState.update { it.copy(mensajeEstado = "Turno del rival...") }
+
+        connectionJob = viewModelScope.launch(Dispatchers.Main) {
+            estadoBluetooth = BluetoothState.CONECTANDO
+            val socket = jascBluetoothManager.connectToServer(device)
+            if (socket != null) {
+                estadoBluetooth = BluetoothState.CONECTADO
+                jascBluetoothManager.listenForMessages(socket) { mensaje ->
+                    procesarMovimientoRemoto(mensaje)
+                    onMessageReceived(mensaje)
+                }
+                desconectarBluetooth()
+            } else {
+                estadoBluetooth = BluetoothState.DESCONECTADO
+            }
+        }
+    }
+
+    private fun procesarMovimientoRemoto(mensaje: String) {
+        viewModelScope.launch(Dispatchers.Main) {
+            try {
+                val partes = mensaje.split("->")
+                if (partes.size == 2) {
+                    val orig = partes[0].split(",")
+                    val dest = partes[1].split(",")
+
+                    // 🟢 LEER COORDENADAS ABSOLUTAS (Sin restar 7)
+                    // Ambos celulares deben registrar la pieza en la misma posición exacta de la matriz
+                    val origenX = orig[0].trim().toInt()
+                    val origenY = orig[1].trim().toInt()
+                    val destinoX = dest[0].trim().toInt()
+                    val destinoY = dest[1].trim().toInt()
+// Dentro de tu BoardViewModel.kt añade:
+                    var esDispositivoBuscador by mutableStateOf(false)
+                    val origen = Position(origenX, origenY)
+                    val destino = Position(destinoX, destinoY)
+
+                    Log.d("Bluetooth", "Sincronizando jugada rival: $origen -> $destino")
+
+                    // Ejecutamos el movimiento directamente indicando que es remoto
+                    intentarMovimiento(origen, destino, esRemoto = true)
+                }
+            } catch (e: Exception) {
+                Log.e("Bluetooth", "Error parseando mensaje remoto: $mensaje", e)
+            }
+        }
+    }
+
+    fun enviarMovimientoRemoto(movimiento: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            jascBluetoothManager.enviarMovimientoRemoto(movimiento)
+        }
+    }
+
+    fun desconectarBluetooth() {
+        connectionJob?.cancel()
+        connectionJob = null
+        estadoBluetooth = BluetoothState.DESCONECTADO
+        miEquipoNet = null
+        jascBluetoothManager.closeConnection()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        desconectarBluetooth()
+    }
+
+    // --- ♟️ Lógica Base de Ajedrez ---
+
     private fun crearPiezasIniciales(): List<PieceState> {
         val piezas = mutableListOf<PieceState>()
-
         for (i in 0..7) {
             piezas.add(PieceState("pP$i", PieceType.PEON, Team.BLANCAS, Position(6, i)))
             piezas.add(PieceState("pN$i", PieceType.PEON, Team.NEGRO, Position(1, i)))
         }
-
         val orden = listOf(
             PieceType.TORRE, PieceType.CABALLO, PieceType.ALFIL,
             PieceType.REINA, PieceType.REY, PieceType.ALFIL,
@@ -81,12 +207,7 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         return piezas
     }
 
-    /**
-     * 🔄 Siguiente Partida
-     * Limpia el tablero conservando intactos los acumuladores de puntos.
-     */
     fun siguientePartida() {
-        Log.d("JascChess", "Siguiente partida iniciada. Manteniendo puntajes anteriores.")
         _historial.clear()
         _boardState.value = BoardState(
             pieces = crearPiezasIniciales(),
@@ -98,9 +219,6 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    /**
-     * 🎬 Retorna el ID del recurso de video que corresponde según los millares de puntos.
-     */
     fun obtenerVideoRecompensa(puntos: Int): Int {
         val millar = (puntos / 1000) * 1000
         return when (millar) {
@@ -118,12 +236,7 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * 🧹 Reset completo del juego
-     * Devuelve absolutamente todos los marcadores a cero (0).
-     */
     fun resetearJuego() {
-        Log.d("JascChess", "Reset completo del juego y marcadores")
         _historial.clear()
         puntosJugadorTotal = 0
         puntosIATotal = 0
@@ -139,18 +252,24 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun intentarMovimiento(origen: Position, destino: Position) {
+    fun intentarMovimiento(origen: Position, destino: Position, esRemoto: Boolean = false) {
         val currentState = _boardState.value
         if (currentState.esJaqueMate || currentState.esTablas) return
 
         val piezaAtacante = currentState.pieces.find { it.position == origen && it.health > 0 } ?: return
         if (piezaAtacante.team != currentState.turn) return
+
+        // 🔐 Control de Sala Multijugador
+        if (modoJuegoActivo == ModoJuego.MULTIJUGADOR && !esRemoto) {
+            if (piezaAtacante.team != miEquipoNet) return
+        }
+
         if (!MoveValidator.esMovimientoValido(piezaAtacante, destino, currentState.pieces)) return
 
         _historial.add(currentState.pieces.toList())
         var nuevasPiezas = currentState.pieces.toMutableList()
 
-        // --- 1. Gestión del Enroque ---
+        // Enroque
         if (piezaAtacante.type == PieceType.REY && abs(destino.y - origen.y) == 2) {
             val esCorto = destino.y > origen.y
             val torreY = if (esCorto) 7 else 0
@@ -162,7 +281,6 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // --- 2. Gestión de Combate, Daño y Efectos de Sonido ---
         val piezaDefensora = nuevasPiezas.find { it.position == destino && it.health > 0 }
         var seCambiaTurno = true
 
@@ -179,23 +297,15 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
                 } else it
             }.toMutableList()
 
-            // Sonido de ataque/captura estándar
             playCapture()
 
-            // Si la pieza defensora sobrevivió al impacto, el atacante no cambia su turno (sigue presionando)
             if (nuevaVida > 0) {
                 seCambiaTurno = false
             }
         } else {
-            // Movimiento a casilla vacía: validamos si es el caballo para usar su relincho exclusivo
-            if (piezaAtacante.type == PieceType.CABALLO) {
-                playKnight()
-            } else {
-                playMove()
-            }
+            if (piezaAtacante.type == PieceType.CABALLO) playKnight() else playMove()
         }
 
-        // --- 3. Desplazamiento Físico del Atacante ---
         val piezaDefensoraPostAtaque = nuevasPiezas.find { it.id == (piezaDefensora?.id ?: "") }
         if (piezaDefensoraPostAtaque == null || piezaDefensoraPostAtaque.health <= 0) {
             nuevasPiezas = nuevasPiezas.map {
@@ -203,18 +313,23 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
             }.toMutableList()
         }
 
-        // --- 4. Coronación de Peones ---
+        // Promoción de Peón
         val piezasFinales = nuevasPiezas.map {
             if (it.type == PieceType.PEON && (it.position.x == 0 || it.position.x == 7)) {
                 it.copy(type = PieceType.REINA)
             } else it
         }
 
-        // --- 5. Cálculo y Transición del Siguiente Turno ---
         val siguienteTurno = if (seCambiaTurno) {
             if (currentState.turn == Team.BLANCAS) Team.NEGRO else Team.BLANCAS
         } else {
             currentState.turn
+        }
+
+        // 🛰️ Transmitir movimiento local por Bluetooth al oponente
+        if (modoJuegoActivo == ModoJuego.MULTIJUGADOR && !esRemoto) {
+            val comandoRed = "${origen.x},${origen.y}->${destino.x},${destino.y}"
+            enviarMovimientoRemoto(comandoRed)
         }
 
         actualizarEstadoJuego(piezasFinales, siguienteTurno)
@@ -237,33 +352,22 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         val esMate = MoveValidator.esJaqueMate(siguienteTurno, piezas)
         val esAhogado = MoveValidator.esReyAhogado(siguienteTurno, piezas)
 
-        // Evaluar si alguna pieza del estado anterior pasó a salud 0 en este procesamiento
         val estadoAnterior = _boardState.value.pieces
         piezas.forEach { nuevaPieza ->
             val piezaAntes = estadoAnterior.find { it.id == nuevaPieza.id }
             if (piezaAntes != null && piezaAntes.health > 0 && nuevaPieza.health <= 0) {
                 val valorPieza = when (nuevaPieza.type) {
-                    PieceType.REY -> 100
-                    PieceType.REINA -> 100
-                    PieceType.TORRE -> 50
-                    PieceType.CABALLO -> 34
-                    PieceType.ALFIL -> 25
-                    PieceType.PEON -> 20
+                    PieceType.REY -> 100; PieceType.REINA -> 100; PieceType.TORRE -> 50
+                    PieceType.CABALLO -> 34; PieceType.ALFIL -> 25; PieceType.PEON -> 20
                 }
-                if (nuevaPieza.team == Team.NEGRO) {
-                    puntosCapturasJugador += valorPieza
-                } else {
-                    puntosCapturasIA += valorPieza
-                }
+                if (nuevaPieza.team == Team.NEGRO) puntosCapturasJugador += valorPieza else puntosCapturasIA += valorPieza
             }
         }
 
         _boardState.update { currentState ->
             val piezasFinales = if (esMate) {
                 piezas.map {
-                    if (it.type == PieceType.REY && it.team == siguienteTurno) {
-                        it.copy(health = 0)
-                    } else it
+                    if (it.type == PieceType.REY && it.team == siguienteTurno) it.copy(health = 0) else it
                 }
             } else piezas.toList()
 
@@ -277,25 +381,28 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
                     esMate -> "¡JAQUE MATE! Gana: ${if (siguienteTurno == Team.BLANCAS) "NEGRO" else "BLANCAS"}"
                     esAhogado -> "¡TABLAS!"
                     enJaque -> "¡JAQUE!"
-                    siguienteTurno == Team.BLANCAS -> "Tu turno"
-                    else -> "IA pensando..."
+                    siguienteTurno == Team.BLANCAS -> {
+                        if (modoJuegoActivo == ModoJuego.MULTIJUGADOR) {
+                            if (miEquipoNet == Team.BLANCAS) "Tu turno (Blancas)" else "Turno del rival..."
+                        } else "Tu turno"
+                    }
+                    else -> {
+                        if (modoJuegoActivo == ModoJuego.MULTIJUGADOR) {
+                            if (miEquipoNet == Team.NEGRO) "Tu turno (Negras)" else "Turno del rival..."
+                        } else "IA pensando..."
+                    }
                 }
             )
         }
 
-        // --- Puntaje por victoria de la partida ---
         if (esMate) {
-            if (siguienteTurno == Team.NEGRO) {
-                puntosJugadorTotal += 100
-            } else {
-                puntosIATotal += 100
-            }
+            if (siguienteTurno == Team.NEGRO) puntosJugadorTotal += 100 else puntosIATotal += 100
             playMate()
         } else if (esAhogado) {
             playVictoria()
         }
 
-        if (siguienteTurno == Team.NEGRO && !esMate && !esAhogado) {
+        if (modoJuegoActivo == ModoJuego.CONTRA_IA && siguienteTurno == Team.NEGRO && !esMate && !esAhogado) {
             ejecutarJugadaIA()
         }
     }
@@ -309,13 +416,11 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
                 NivelIA.AVANZADO -> 100L
             }
             delay(delayTime)
-
             val movimiento = withContext(Dispatchers.Default) {
                 ChessAI.calcularMovimientoIA(_boardState.value.pieces, nivelIA)
             }
-
             if (movimiento != null) {
-                intentarMovimiento(movimiento.first, movimiento.second)
+                intentarMovimiento(movimiento.first, movimiento.second, esRemoto = false)
             }
         }
     }

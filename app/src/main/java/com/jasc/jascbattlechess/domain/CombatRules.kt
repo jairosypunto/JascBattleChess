@@ -6,7 +6,7 @@ import com.jasc.jascbattlechess.data.PieceType
 object CombatRules {
     // Valor único para cada pieza
     fun obtenerValorPieza(type: PieceType): Int = when (type) {
-        PieceType.REY -> 100
+        PieceType.REY -> 150
         PieceType.REINA -> 100
         PieceType.TORRE -> 50
         PieceType.CABALLO -> 34
