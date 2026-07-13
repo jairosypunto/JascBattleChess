@@ -6,19 +6,22 @@ import kotlin.math.abs
 object MoveValidator {
 
     fun esMovimientoValido(pieza: PieceState, destino: Position, piezas: List<PieceState>): Boolean {
-        if (piezas.any { it.position == destino && it.team == pieza.team }) return false
+        // ✅ CORRECCIÓN: No chocar con piezas aliadas VIVAS
+        if (piezas.any { it.position == destino && it.team == pieza.team && it.health > 0 }) return false
         if (!verificarGeometria(pieza, destino, piezas)) return false
 
         val piezasSimuladas = piezas.map {
             when {
                 it.id == pieza.id -> it.copy(position = destino)
-                it.position == destino -> it.copy(health = 0, position = Position(-1, -1)) // ✅ elimina la pieza capturada
+                it.position == destino -> it.copy(health = 0, position = Position(-1, -1)) // ✅ Elimina la pieza capturada físicamente
                 else -> it
             }
         }
 
-        // Si es el rey, no puede moverse a una casilla bajo ataque
-        if (pieza.type == PieceType.REY && esJaque(pieza.team, piezasSimuladas)) return false
+        // ✅ CORRECCIÓN: Para evitar la recursión infinita del Rey, evaluamos directo con estaBajoAtaque
+        if (pieza.type == PieceType.REY) {
+            return !estaBajoAtaque(destino, pieza.team, piezasSimuladas)
+        }
 
         return !quedariaEnJaque(pieza, destino, piezas)
     }
@@ -56,8 +59,6 @@ object MoveValidator {
             PieceType.TORRE -> (dx == 0 || dy == 0) && caminoLibre(pieza.position, destino, piezas)
             PieceType.REINA -> ((dx == 0 || dy == 0) || (absDx == absDy)) && caminoLibre(pieza.position, destino, piezas)
             PieceType.ALFIL -> (absDx == absDy) && caminoLibre(pieza.position, destino, piezas)
-
-
             PieceType.REY -> (absDx <= 1 && absDy <= 1) || validarEnroque(pieza, destino, piezas)
             PieceType.CABALLO -> (absDx == 2 && absDy == 1) || (absDx == 1 && absDy == 2)
         }
@@ -69,13 +70,15 @@ object MoveValidator {
         val dy = destino.y - pieza.position.y
 
         if (dy == 0) {
-            if (dx == dir && piezas.none { it.position == destino }) return true
+            // ✅ CORRECCIÓN: Validar contra piezas vivas en el camino
+            if (dx == dir && piezas.none { it.position == destino && it.health > 0 }) return true
             if (!pieza.isMoved && dx == 2 * dir &&
-                piezas.none { it.position == Position(pieza.position.x + dir, pieza.position.y) } &&
-                piezas.none { it.position == destino }) return true
+                piezas.none { it.position == Position(pieza.position.x + dir, pieza.position.y) && it.health > 0 } &&
+                piezas.none { it.position == destino && it.health > 0 }) return true
         }
         if (abs(dy) == 1 && dx == dir) {
-            return piezas.any { it.position == destino && it.team != pieza.team }
+            // ✅ CORRECCIÓN: Solo captura si la pieza enemiga está viva
+            return piezas.any { it.position == destino && it.team != pieza.team && it.health > 0 }
         }
         return false
     }
@@ -84,7 +87,8 @@ object MoveValidator {
         if (rey.isMoved || abs(destino.y - rey.position.y) != 2 || destino.x != rey.position.x) return false
         val esEnroqueCorto = destino.y > rey.position.y
         val torreY = if (esEnroqueCorto) 7 else 0
-        val torre = piezas.find { it.type == PieceType.TORRE && it.team == rey.team && it.position.y == torreY && !it.isMoved } ?: return false
+        // ✅ CORRECCIÓN: Asegurar que la torre del enroque esté viva
+        val torre = piezas.find { it.type == PieceType.TORRE && it.team == rey.team && it.position.y == torreY && !it.isMoved && it.health > 0 } ?: return false
         if (!caminoLibre(rey.position, torre.position, piezas)) return false
         val pasos = if (esEnroqueCorto) listOf(4, 5, 6) else listOf(4, 3, 2)
         for (y in pasos) {
@@ -97,16 +101,17 @@ object MoveValidator {
         val piezasSimuladas = piezas.map {
             when {
                 it.id == pieza.id -> it.copy(position = destino)
-                it.position == destino -> it.copy(health = 0, position = Position(-1, -1)) // ✅ elimina la pieza capturada
+                it.position == destino -> it.copy(health = 0, position = Position(-1, -1)) // ✅ Elimina la pieza capturada
                 else -> it
             }
         }
-        val rey = piezasSimuladas.find { it.type == PieceType.REY && it.team == pieza.team } ?: return true
+        val rey = piezasSimuladas.find { it.type == PieceType.REY && it.team == pieza.team && it.health > 0 } ?: return true
         return estaBajoAtaque(rey.position, pieza.team, piezasSimuladas)
     }
 
     fun estaBajoAtaque(pos: Position, equipo: Team, piezas: List<PieceState>): Boolean {
-        return piezas.filter { it.team != equipo }.any { enemiga ->
+        // 🔥 CORRECCIÓN CLAVE: Las piezas atacantes enemigas DEBEN ESTAR VIVAS (health > 0)
+        return piezas.filter { it.team != equipo && it.health > 0 }.any { enemiga ->
             verificarGeometriaBase(enemiga, pos, piezas)
         }
     }
@@ -121,8 +126,6 @@ object MoveValidator {
             PieceType.TORRE -> (dx == 0 || dy == 0) && caminoLibre(pieza.position, destino, piezas)
             PieceType.REINA -> ((dx == 0 || dy == 0) || (absDx == absDy)) && caminoLibre(pieza.position, destino, piezas)
             PieceType.ALFIL -> (absDx == absDy) && caminoLibre(pieza.position, destino, piezas)
-
-
             PieceType.REY -> (absDx <= 1 && absDy <= 1)
             PieceType.CABALLO -> (absDx == 2 && absDy == 1) || (absDx == 1 && absDy == 2)
         }
@@ -138,7 +141,7 @@ object MoveValidator {
 
         // Recorre hasta la casilla anterior al destino
         while (x != destino.x || y != destino.y) {
-            // Si hay una pieza en el camino (antes del destino) → bloquea
+            // Si hay una pieza viva en el camino → bloquea
             if (piezas.any { it.position.x == x && it.position.y == y && it.health > 0 }) return false
             x += stepX
             y += stepY
@@ -148,9 +151,8 @@ object MoveValidator {
         return true
     }
 
-
     fun esJaque(equipo: Team, piezas: List<PieceState>): Boolean {
-        val rey = piezas.find { it.type == PieceType.REY && it.team == equipo }
+        val rey = piezas.find { it.type == PieceType.REY && it.team == equipo && it.health > 0 }
         if (rey == null) return false
         return estaBajoAtaque(rey.position, equipo, piezas)
     }

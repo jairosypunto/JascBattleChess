@@ -356,9 +356,6 @@ fun BattleScreen(
 
                                 Box(
                                     modifier = Modifier
-                                        // 🔄 CORREGIDO AQUÍ:
-                                        // Cambiamos el .aspectRatio(1f) estático por nuestra variable dinámica.
-                                        // Al voltear, se vuelve un rectángulo acostado estilo videojuego.
                                         .aspectRatio(proporcionCelda)
                                         .background(
                                             when {
@@ -408,6 +405,7 @@ fun BattleScreen(
                                         },
                                     contentAlignment = Alignment.Center
                                 ) {
+                                    // 1. DIBUJO DE LA PIEZA (Tu código original intacto)
                                     if (pieza != null && (pieza.health > 0 || pieza.type == PieceType.REY)) {
 
                                         val offsetDinamicoY = if (pieza.team == Team.BLANCAS) {
@@ -432,6 +430,54 @@ fun BattleScreen(
                                                 }
                                                 .offset(y = offsetDinamicoY)
                                         )
+                                    }
+
+                                    // 2. 🔤 AGREGADO: IDENTIFICADOR TOTALMENTE CENTRADO Y GRANDE (CORREGIDO PARA AVANCES)
+                                    if (pieza != null && pieza.health > 0) {
+                                        // Mantén el tamaño dinámico por la perspectiva física del tablero
+                                        val esFilaDelFondo = realRow <= 2
+
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .zIndex(150f)
+                                                .graphicsLayer {
+                                                    clip = false
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = when (pieza.type) {
+                                                    PieceType.TORRE -> "T"
+                                                    PieceType.CABALLO -> "C"
+                                                    PieceType.ALFIL -> "A"
+                                                    PieceType.REINA -> "D"
+                                                    PieceType.REY -> "R"
+                                                    PieceType.PEON -> "P"
+                                                },
+                                                // 🎯 CORRECCIÓN DE CONTRASTE ABSOLUTO:
+                                                // Evaluamos por equipo, no por la posición de la fila.
+                                                color = when (pieza.team) {
+                                                    Team.NEGRO -> Color(0xFFFFF176) // 🌟 Las negras SIEMPRE llevarán amarillo brillante, avancen a donde avancen
+                                                    Team.BLANCAS -> Color.White    // ⚪ Las blancas siempre llevan blanco puro
+                                                },
+                                                // El tamaño se sigue adaptando para leerse mejor si está lejos
+                                                fontSize = if (esFilaDelFondo) 18.sp else 15.sp,
+                                                fontWeight = FontWeight.Black,
+                                                modifier = Modifier
+                                                    .graphicsLayer {
+                                                        rotationX = -18f
+                                                        clip = false
+                                                    }
+                                                    .background(
+                                                        // Subimos la opacidad a 0.65f para que la letra tenga un escudo oscuro
+                                                        // y resalte sobre la madera clara o las casillas del rastro
+                                                        color = Color.Black.copy(alpha = 0.2f),
+                                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                                    )
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
