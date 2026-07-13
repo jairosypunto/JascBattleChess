@@ -51,7 +51,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.shape.RoundedCornerShape
-
+import com.jasc.jascbattlechess.ui.theme.TemaAjedrez
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 enum class ModoJuego { CONTRA_IA, MULTIJUGADOR }
 
 @Suppress("SpellCheckingInspection")
@@ -63,7 +65,8 @@ fun BattleScreen(
 ) {
     val boardState by viewModel.boardState.collectAsState()
     var selectedPosition by remember { mutableStateOf<Position?>(null) }
-
+// Al inicio de tu BattleScreen:
+    var temaConfigurado by remember { mutableStateOf(TemaAjedrez.AZUL_HERMOSO) }
     val config = LocalConfiguration.current
     val isLandscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE
 
@@ -119,53 +122,232 @@ fun BattleScreen(
                 AlertDialog(
                     onDismissRequest = { showHelp = false },
                     title = {
-                        Text(
-                            "Cómo jugar JascBattleChess",
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1976D2)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                "🎮 Cómo jugar JascBattleChess",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 20.sp,
+                                color = temaConfigurado.principal
+                            )
+                        }
                     },
                     text = {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(320.dp)
+                                .height(380.dp) // Alto ideal para scroll cómodo
                                 .verticalScroll(rememberScrollState())
                         ) {
-                            Text("1. Haz clic en la pieza que quieres mover; se pondrá más grande y luego selecciona la casilla destino o el oponente a golpear.")
+                            // ===================================================
+                            // 🕹️ SECCIÓN 1: CONTROLES BÁSICOS
+                            // ===================================================
+                            Text("1. Controles de Juego", fontWeight = FontWeight.Bold, color = temaConfigurado.principal)
+                            Text("• Seleccionar: Toca una pieza; se agrandará para indicar que está activa.")
+                            Text("• Acciones: Selecciona una casilla vacía para moverte, o toca a un oponente directo para iniciar un combate.")
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // ===================================================
+                            // 🔤 SECCIÓN 2: IDENTIFICACIÓN DE PIEZAS (DICCIONARIO + MINIATURAS)
+                            // ===================================================
+                            Text("2. Guía Visual de Piezas", fontWeight = FontWeight.Bold, color = temaConfigurado.principal)
+                            Text("En el tablero verás etiquetas flotantes para identificar cada rango:", fontSize = 13.sp, color = Color.Gray)
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            val guiaPiezas = listOf(
+                                Triple("👑", "R", "Rey (Captura de 1 golpe)"),
+                                Triple("👸", "D", "Dama / Reina (Captura de 1 golpe)"),
+                                Triple("🏰", "T", "Torre (Necesita 2 golpes)"),
+                                Triple("🐴", "C", "Caballo (Necesita 3 golpes)"),
+                                Triple("♝", "A", "Alfil (Necesita 4 golpes)"),
+                                Triple("🛡️", "P", "Peón (Necesita 5 golpes)")
+                            )
+
+                            guiaPiezas.forEach { (emoji, letra, descripcion) ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(emoji, fontSize = 18.sp, modifier = Modifier.width(28.dp))
+
+                                    Text(
+                                        text = " $letra ",
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 11.sp,
+                                        color = Color.White,
+                                        modifier = Modifier
+                                            .background(temaConfigurado.principal, shape = androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                                    )
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(descripcion, fontSize = 14.sp)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // ===================================================
+                            // 🎨 🆕 SECCIÓN 3: PERSONALIZACIÓN VISUAL (¡AGREGADO!)
+                            // ===================================================
+                            Text("3. Personalización de Colores", fontWeight = FontWeight.Bold, color = temaConfigurado.principal)
+                            Text("• Cambiar Tema: Toca el botón superior '🎨 Tema' para alternar instantáneamente entre los estilos visuales.")
+                            Text("• Adaptación Total: Cada tema cambiará dinámicamente el color de las casillas claras y oscuras, los botones, los indicadores de texto y el tapete del fondo exterior.")
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // ===================================================
+                            // 🗺️ SECCIÓN 4: GESTOS DEL CAMPO VERTICAL
+                            // ===================================================
+                            Text("4. Control de Cámara 3D", fontWeight = FontWeight.Bold, color = temaConfigurado.principal)
+                            Text("• Zoom (Pellizco): Pellizca con dos dedos sobre el área exterior del tablero para acercar o alejar la perspectiva.")
+                            Text("• Desplazar (Arrastrar): Usa dos dedos al mismo tiempo para mover el enfoque del campo de batalla.")
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // ===================================================
+                            // 📡 SECCIÓN 5: BLUETOOTH Y OBJETIVO
+                            // ===================================================
+                            Text("5. Multijugador Bluetooth", fontWeight = FontWeight.Bold, color = temaConfigurado.principal)
+                            Text("• Vincula previamente ambos celulares en los ajustes de Android.")
+                            Text("• Un jugador debe presionar 'Crear Sala' y el otro 'Buscar Rival' para sincronizar turnos estrictos en red.")
+
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("6. Victoria", fontWeight = FontWeight.Bold, color = temaConfigurado.principal)
+                            Text("• El objetivo absoluto es fulminar al Rey enemigo (Jaque Mate). Al terminar, puedes arrastrar la tarjeta de resultados para auditar el tablero final.")
+
+                            // ===================================================
+                            // 🪪 SECCIÓN 6: CRÉDITOS Y CONTACTO
+                            // ===================================================
+                            Spacer(modifier = Modifier.height(24.dp))
+                            HorizontalDivider(color = Color.Gray.copy(alpha = 0.2f))
                             Spacer(modifier = Modifier.height(12.dp))
-                            Text("2. Reglas de ataque (Vida y Resistencia):", fontWeight = FontWeight.Bold)
-                            Text("- Reina y Rey: Capturan al enemigo con 1 golpe.")
-                            Text("- Torre: Necesita 2 golpes para derrotar.")
-                            Text("- Caballo: Necesita 3 golpes para derrotar.")
-                            Text("- Alfil: Necesita 4 golpes para derrotar.")
-                            Text("- Peón: Necesita 5 golpes para derrotar.")
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text("3. Control del Tablero:", fontWeight = FontWeight.Bold)
-                            Text("- Pellizco (Pinch): Usa dos dedos para acercar o alejar el campo de batalla 3D.")
-                            Text("- Paneo (Arrastrar): Desplaza el tablero con dos dedos para ajustar el enfoque.")
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text("4. Partidas por Bluetooth:", fontWeight = FontWeight.Bold)
-                            Text("- Vincula los dispositivos en los ajustes de tu celular.")
-                            Text("- Un jugador debe 'Crear Sala' y el otro 'Buscar Rival'. La IA se desactiva y juegan en turnos estrictos sincronizados.")
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text("5. El objetivo es derrotar al Rey enemigo (Jaque Mate).")
-                            Text("- Al concluir, puedes arrastrar la tarjeta flotante de resultados para inspeccionar el estado final del tablero.")
-                            Spacer(modifier = Modifier.height(20.dp))
-                            HorizontalDivider(color = Color.Gray.copy(alpha = 0.3f))
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text("Creado por Jairo Salazar Castaño", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Color.Gray)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text("📞 Teléfono: 3016173378", fontSize = 12.sp, color = Color.Gray)
-                            Text("✉️ Correo: jairosypunto@gmail.com", fontSize = 12.sp, color = Color.Gray)
+
+                            Card(
+                                colors = androidx.compose.material3.CardDefaults.cardColors(
+                                    containerColor = temaConfigurado.principal.copy(alpha = 0.04f)
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    width = 1.dp,
+                                    color = temaConfigurado.principal.copy(alpha = 0.15f)
+                                ),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(
+                                        text = "Jairo Salazar Castaño",
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 15.sp,
+                                        color = temaConfigurado.principal
+                                    )
+                                    Text(
+                                        text = "Ingeniero en Sistemas",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 12.sp,
+                                        color = Color.DarkGray.copy(alpha = 0.8f),
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+
+                                    Text(
+                                        text = "🧠 Apasionado por la estrategia y el código",
+                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                        fontSize = 12.sp,
+                                        color = Color.Gray,
+                                        modifier = Modifier.padding(top = 6.dp, bottom = 10.dp)
+                                    )
+
+                                    HorizontalDivider(color = temaConfigurado.principal.copy(alpha = 0.1f))
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(vertical = 2.dp)
+                                    ) {
+                                        Text("📞", fontSize = 12.sp, modifier = Modifier.width(22.dp))
+                                        Text(
+                                            text = "301 617 3378",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = Color.DarkGray
+                                        )
+                                    }
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(vertical = 2.dp)
+                                    ) {
+                                        Text("✉️", fontSize = 12.sp, modifier = Modifier.width(22.dp))
+                                        Text(
+                                            text = "jairosypunto@gmail.com",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = Color.DarkGray
+                                        )
+                                    }
+                                }
+                            }
                         }
                     },
                     confirmButton = {
-                        TextButton(onClick = { showHelp = false }) {
-                            Text("Entendido", color = Color(0xFF1976D2), fontWeight = FontWeight.Bold)
+                        TextButton(
+                            onClick = { showHelp = false },
+                            modifier = Modifier.padding(end = 8.dp, bottom = 8.dp)
+                        ) {
+                            Text("Entendido", color = temaConfigurado.principal, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
                         }
                     }
                 )
+            }
+            // ===================================================
+// 🕹️ BOTONES DE ACCIÓN (Pon esto justo arriba de tu Tablero)
+// ===================================================
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 🎨 Botón interactivo para cambiar de Tema
+                TextButton(
+                    onClick = {
+                        temaConfigurado = when (temaConfigurado) {
+                            TemaAjedrez.AZUL_HERMOSO -> TemaAjedrez.MADERA
+                            TemaAjedrez.MADERA -> TemaAjedrez.NEON
+                            TemaAjedrez.NEON -> TemaAjedrez.CARBON
+                            TemaAjedrez.CARBON -> TemaAjedrez.MORADO_MISTICO
+                            TemaAjedrez.MORADO_MISTICO -> TemaAjedrez.AZUL_HERMOSO
+                        }
+                    },
+                    modifier = Modifier.background(
+                        color = temaConfigurado.principal.copy(alpha = 0.1f), // 🎯 Dinámico con el tema activo
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                    )
+                ) {
+                    val textoBoton = when (temaConfigurado) {
+                        TemaAjedrez.AZUL_HERMOSO -> "🎨 Tema: Azul Hermoso"
+                        TemaAjedrez.MADERA -> "🎨 Tema: Madera Clásica"
+                        TemaAjedrez.NEON -> "🎨 Tema: Neón Cyber"
+                        TemaAjedrez.CARBON -> "🎨 Tema: Carbón Elegante"
+                        TemaAjedrez.MORADO_MISTICO -> "🎨 Tema: Morado Místico"
+                    }
+                    Text(
+                        text = textoBoton,
+                        color = temaConfigurado.principal, // 🎯 Texto del botón dinámico
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
+
+                // Aquí abajo puedes dejar tu botón de ayuda existente si ya tenías uno...
             }
 
             if (!isLandscape) {
@@ -180,7 +362,7 @@ fun BattleScreen(
                         Text(
                             "⬅️ Deshacer",
                             fontSize = 12.sp,
-                            color = if (viewModel.modoJuegoActivo == ModoJuego.CONTRA_IA) Color.Unspecified else Color.Gray
+                            color = if (viewModel.modoJuegoActivo == ModoJuego.CONTRA_IA) temaConfigurado.principal else Color.Gray // 🎯 Deshacer dinámico
                         )
                     }
 
@@ -191,12 +373,21 @@ fun BattleScreen(
                         textAlign = TextAlign.Center,
                         fontWeight = FontWeight.Bold
                     )
+
                     TextButton(onClick = {
+                        // 1. Reseteamos el tablero, la IA y los turnos a través del ViewModel
                         viewModel.resetearJuego()
+
+                        // 2. Limpiamos las variables de control de la pantalla
                         esperandoOponente = false
                         selectedPosition = null
                         viewModel.modoJuegoActivo = ModoJuego.CONTRA_IA
-                    }) { Text("🔄 Reset", fontSize = 12.sp) }
+
+                        // 🎯 Limpiamos el rastro manual de inmediato para la nueva partida
+                        limpiarRastroManual = true
+                    }) {
+                        Text("🔄 Reset", fontSize = 12.sp, color = temaConfigurado.principal) // 🎯 Reset dinámico
+                    }
                 }
 
                 Row(
@@ -211,13 +402,15 @@ fun BattleScreen(
 
                     RadioButton(
                         selected = viewModel.modoJuegoActivo == ModoJuego.CONTRA_IA,
-                        onClick = { viewModel.modoJuegoActivo = ModoJuego.CONTRA_IA }
+                        onClick = { viewModel.modoJuegoActivo = ModoJuego.CONTRA_IA },
+                        colors = RadioButtonDefaults.colors(selectedColor = temaConfigurado.principal) // 🎯 Checkbox dinámico
                     )
                     Text("Contra IA", color = Color.White, fontSize = 12.sp, modifier = Modifier.clickable { viewModel.modoJuegoActivo = ModoJuego.CONTRA_IA })
 
                     RadioButton(
                         selected = viewModel.modoJuegoActivo == ModoJuego.MULTIJUGADOR,
-                        onClick = { viewModel.modoJuegoActivo = ModoJuego.MULTIJUGADOR }
+                        onClick = { viewModel.modoJuegoActivo = ModoJuego.MULTIJUGADOR },
+                        colors = RadioButtonDefaults.colors(selectedColor = temaConfigurado.principal) // 🎯 Checkbox dinámico
                     )
                     Text("Por Bluetooth", color = Color.White, fontSize = 12.sp, modifier = Modifier.clickable { viewModel.modoJuegoActivo = ModoJuego.MULTIJUGADOR })
                 }
@@ -226,8 +419,12 @@ fun BattleScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Button(onClick = { showHelp = true }, modifier = Modifier.weight(1f).padding(end = 4.dp)) {
-                        Text("Ayuda", fontSize = 12.sp)
+                    Button(
+                        onClick = { showHelp = true },
+                        modifier = Modifier.weight(1f).padding(end = 4.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = temaConfigurado.principal) // 🎯 Botón Ayuda dinámico
+                    ) {
+                        Text("Ayuda", fontSize = 12.sp, color = Color.White)
                     }
 
                     Button(
@@ -238,10 +435,12 @@ fun BattleScreen(
                             }
                         },
                         enabled = viewModel.modoJuegoActivo == ModoJuego.MULTIJUGADOR,
-                        colors = ButtonDefaults.buttonColors(containerColor = if (esperandoOponente) Color.Green else Color(0xFF1976D2)),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (esperandoOponente) Color.Green else temaConfigurado.principal // 🎯 Sala activa dinámica
+                        ),
                         modifier = Modifier.weight(1f).padding(horizontal = 2.dp)
                     ) {
-                        Text(if (esperandoOponente) "Sala Activa" else "Crear Sala", fontSize = 12.sp)
+                        Text(if (esperandoOponente) "Sala Activa" else "Crear Sala", fontSize = 12.sp, color = Color.White)
                     }
 
                     Button(
@@ -256,10 +455,10 @@ fun BattleScreen(
                             }
                         },
                         enabled = viewModel.modoJuegoActivo == ModoJuego.MULTIJUGADOR,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2)),
+                        colors = ButtonDefaults.buttonColors(containerColor = temaConfigurado.principal), // 🎯 Buscar rival dinámico
                         modifier = Modifier.weight(1f).padding(start = 4.dp)
                     ) {
-                        Text("Buscar Rival", fontSize = 12.sp)
+                        Text("Buscar Rival", fontSize = 12.sp, color = Color.White)
                     }
                 }
             }
@@ -287,7 +486,7 @@ fun BattleScreen(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .background(Color(0xFF2E7D32)) // Tu fondo verde principal
+                    .background(temaConfigurado.fondoTablero) // 🎯 ¡CORREGIDO AQUÍ! Cambiado el color fijo por el del tema dinámico
                     .fillMaxSize()
                     .pointerInput(Unit) {
                         detectTransformGestures { _, pan: Offset, zoom: Float, _ ->
@@ -309,6 +508,7 @@ fun BattleScreen(
                         }
                         .zIndex(20f)
                 ) {
+                    // Aquí continúa tu LazyVerticalGrid de las casillas...
 
                     // 🎴 LA CUADRÍCULA DE ENGAÑO TOTAL (10x10 = 100 Celdas)
 // 🎴 LA CUADRÍCULA DE ENGAÑO TOTAL (10x10 = 100 Celdas)
@@ -354,15 +554,27 @@ fun BattleScreen(
                                 val pieza = boardState.pieces.find { it.position == currentPos }
                                 val scalePiece by animateFloatAsState(if (isSelected) 2.4f else 1.7f)
 
+                                // ===================================================
+// ===================================================
+                                // 🧱 PASO B: Dibujo de las Casillas (CORREGIDO CON TEMAS)
+                                // ===================================================
+                                val esClara = (realRow + realCol) % 2 == 0
+
+                                // Especificamos el color explícitamente según el tema seleccionado
+                                val colorCasilla: androidx.compose.ui.graphics.Color = if (esClara) {
+                                    temaConfigurado.clara
+                                } else {
+                                    temaConfigurado.oscura
+                                }
+
                                 Box(
                                     modifier = Modifier
                                         .aspectRatio(proporcionCelda)
                                         .background(
                                             when {
-                                                esRastro -> Color(0xFFFFF59D).copy(alpha = 0.5f)
-                                                pieza?.type == PieceType.REY && pieza.health <= 0 -> Color.Red.copy(alpha = 0.5f)
-                                                (x + y) % 2 != 0 -> Color(0xFFB58863)
-                                                else -> Color(0xFFF0D9B5)
+                                                esRastro -> Color(0xFFFFF59D).copy(alpha = 0.5f) // Rastro amarillo de jugada
+                                                pieza?.type == PieceType.REY && pieza.health <= 0 -> Color.Red.copy(alpha = 0.5f) // Sangre del Rey
+                                                else -> colorCasilla // 🎯 ¡CORREGIDO! Ahora sí usa el tema dinámico (Azul Hermoso, Madera, Neón)
                                             }
                                         )
                                         .clickable {
@@ -405,8 +617,12 @@ fun BattleScreen(
                                         },
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    // 1. DIBUJO DE LA PIEZA (Tu código original intacto)
+                                    // 👑 Aquí adentro continúa tu PieceComponent para dibujar los modelos de las piezas...
+                                    // 1. DIBUJO DE LA PIEZA (CORREGIDO Y SIN ERRORES DE REFERENCIA)
                                     if (pieza != null && (pieza.health > 0 || pieza.type == PieceType.REY)) {
+
+                                        // 🎯 REGLA DE ORO: Si el rey no tiene vida, asumimos que es el fin de la partida (Jaque Mate / Victoria)
+                                        val esFinDePartida = pieza.type == PieceType.REY && pieza.health <= 0
 
                                         val offsetDinamicoY = if (pieza.team == Team.BLANCAS) {
                                             (-cellSize.value * 0.12f).dp
@@ -418,15 +634,23 @@ fun BattleScreen(
                                             }
                                         }
 
+                                        // Si es el Rey y la partida terminó, congelamos su escala original para que NO se vea mocho
+                                        val escalaFinal = if (esFinDePartida) {
+                                            scalePiece
+                                        } else {
+                                            if (pieza.team == Team.BLANCAS) scalePiece else scalePiece * 1.25f
+                                        }
+
                                         PieceComponent(
                                             piece = pieza,
                                             miEquipo = viewModel.miEquipoNet,
                                             modifier = Modifier
-                                                .scale(if (pieza.team == Team.BLANCAS) scalePiece else scalePiece * 1.25f)
+                                                .scale(escalaFinal)
                                                 .zIndex(100f)
                                                 .graphicsLayer {
-                                                    alpha = if (pieza.type == PieceType.REY && pieza.health <= 0) 0.7f else 1.0f
-                                                    clip = false
+                                                    // Si es el fin de la partida, el Rey se queda pintado entero al 100% de opacidad
+                                                    alpha = if (esFinDePartida) 1.0f else 1.0f
+                                                    clip = false // Evita que Compose moche la corona o los bordes de la pieza
                                                 }
                                                 .offset(y = offsetDinamicoY)
                                         )
@@ -665,9 +889,16 @@ fun BattleScreen(
                         Button(
                             onClick = {
                                 selectedPosition = null
-                                limpiarRastroManual = true // 🧼 Borra el rastro verde inmediatamente de la pantalla
+
+                                // 🧼 Forzamos la limpieza del rastro en la interfaz
+                                limpiarRastroManual = true
+
+                                // 🔄 Avanzamos a la siguiente partida en el ViewModel
                                 viewModel.siguientePartida()
-                                limpiarRastroManual = false // 🔄 Lo prepara para los movimientos de la nueva partida
+
+                                // 🧠 Si tu ViewModel tiene las variables de rastro, las limpiamos directamente en el backend:
+                                // viewModel.ultimoOrigen = null
+                                // viewModel.ultimoDestino = null
                             },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2)),

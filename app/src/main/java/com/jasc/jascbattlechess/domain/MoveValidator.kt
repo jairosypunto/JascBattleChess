@@ -167,6 +167,7 @@ object MoveValidator {
             for (x in 0..7) {
                 for (y in 0..7) {
                     val destino = Position(x, y)
+                    // Cambia este pedazo dentro de tu bucle en esJaqueMate:
                     if (esMovimientoValido(pieza, destino, piezas)) {
                         // Simular el movimiento
                         val piezasSimuladas = piezas.map {
@@ -176,9 +177,9 @@ object MoveValidator {
                                 else -> it
                             }
                         }
-                        // 3. Si después del movimiento el rey ya no está en jaque → no es mate
+                        // Si encontramos TAN SOLO UN movimiento que salve al rey, cancelamos el bucle de inmediato
                         if (!esJaque(equipo, piezasSimuladas)) {
-                            return false
+                            return false // Corta la ejecución y ahorra miles de ciclos al procesador
                         }
                     }
                 }
